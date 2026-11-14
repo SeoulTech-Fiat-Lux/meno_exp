@@ -10,6 +10,7 @@
 bench.toml       N 목록, 대상, 반복 수, 워밍업·기록 프레임 수, 실행 명령
 run.py           Meno를 Release로 빌드하고 (대상, N, 반복)마다 새 프로세스로 실행, 환경과 함께 기록
 summarize.py     평균·p50·p99 표(summary.md, summary.csv)와 그래프(frametime.png)
+figures.py       배칭 판단용 그림 4장과 그 값 표(figures/)
 results/<날짜>-<meno 커밋>/   env.json, runs.jsonl, raw/<대상>-<N>-rep<k>.csv, 요약 파일, tracy/
 ```
 
@@ -69,11 +70,31 @@ python3 run.py --meno ~/Meno        # Release 빌드 후 측정. 결과 폴더 �
 pip install -r requirements.txt && python3 summarize.py results/<날짜>-<meno 커밋>
 ```
 
+```bash
+python3 figures.py results/<날짜>-<meno 커밋>     # summarize.py 다음에
+```
+
 - **사전 점검:** 본 측정 전에 대상마다 가장 작은 N으로 10프레임만 돌려 본다(기록하지 않음). 하나라도 실패하면 결과 폴더를 만들기 전에 멈춘다. 대상 이름이나 출력 형식이 이 문서의 약속과 어긋나도 회차를 낭비하지 않게 하려는 것이다. `--mock`에서는 건너뛴다.
 - **빌드 폴더:** `work/build-<커밋>/` (커밋 안 함). 이미 빌드한 실행 파일이 있으면 `--bin`으로 준다.
 - **실패:** 실패한 측정은 `runs.jsonl`에 `ok: false`와 `stderr_tail`로 남고 표에서 빠진다. 요약 아래에 빠진 목록이 나온다.
 - **통계:** 측정마다 평균·p50·p99를 내고(백분위는 #29의 `frametime_stats.py`와 같은 방식), 반복 사이에서는 중앙값과 최소·최대를 낸다.
 - **비:** 표에는 이웃한 두 대상의 비(`meno-renderer/sfml`은 `Renderer` 단계, `meno-object/meno-renderer`는 객체 단계의 비용)와 전체 비(`meno-object/sfml`)가 나온다. 대상 순서는 `bench.toml`의 `targets`를 따른다.
+
+## 그림 (figures.py)
+
+결과 폴더의 `figures/`에 그림 4장과, 그림에서 읽을 값을 표로 옮긴 `figures.md`를 쓴다.
+
+| 그림 | 답하는 질문 | 읽는 법 |
+|---|---|---|
+| `1-budget.png` | 몇 개까지 60·30 fps를 지키는가 | 평균·p99 프레임 시간과 16.7ms·33.3ms 예산선. ▼가 예산을 넘는 N(log-log 보간). 측정한 가장 큰 N까지 넘지 않으면 표시 없음 |
+| `2-stages.png` | 차이가 어느 단계에서 생기는가 | `meno-object` 평균 프레임 시간을 SFML 기본 / Renderer 단계 / 객체 단계 비율로 나눈 막대 |
+| `3-per-sprite.png` | 개수에 비례하는 비용이 주인가 | 평균 프레임 시간 ÷ N(μs). N이 커질 때 평평해지면 스프라이트마다 드는 비용(그리기 호출 등)이 주도 |
+| `4-distribution.png` | p99가 높은 이유가 끊김인가 | N = 1000, 10000에서 "x보다 느린 프레임 비율"(로그 축). 급하게 떨어지면 고른 프레임, 오른쪽으로 긴 꼬리면 가끔 튀는 프레임 |
+
+- **2번 해석 주의:** 배칭이 줄이는 것은 그리기 호출 수다. `sfml` 대상도 스프라이트마다 `draw`를 부르므로, SFML 기본 칸에도 배칭으로 줄어들 부분이 들어 있다. Renderer 칸은 meno가 SFML 위에 얹은 비용만이다.
+- **2번 음수:** 뒤 대상이 앞 대상보다 빠르면 그 단계를 0으로 자르고 그림 아래와 `figures.md`에 표시한다.
+- **색:** 대상 3개까지만 색을 쓴다(색각 이상에서도 모든 쌍이 구분되는 범위). 더 늘리면 스크립트가 멈추므로 그림을 나눈다.
+- **글자:** 그림 글자는 영어다. WSL에 한글 글꼴이 없으면 깨진다.
 
 ## Tracy 병목 분석
 
