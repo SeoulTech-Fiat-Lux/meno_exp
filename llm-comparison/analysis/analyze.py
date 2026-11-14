@@ -22,7 +22,9 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(BASE / "harness"))
 import errors  # noqa: E402
+import records as runlog  # noqa: E402
 
 BOOTSTRAP = 10_000
 
@@ -122,12 +124,7 @@ def holm(pvalues: dict[str, float | None]) -> dict[str, float | None]:
 # ---------------------------------------------------------------------------
 # 데이터
 # ---------------------------------------------------------------------------
-def load_records(runs_dir: Path) -> list[dict]:
-    records = [json.loads(line) for path in sorted(runs_dir.glob("runs*.jsonl"))
-               for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    if not records:
-        raise SystemExit(f"{runs_dir}에 회차 기록이 없음")
-    return records
+load_records = runlog.load_records  # 형식은 harness/records.py
 
 
 def load_scores(path: str) -> dict[str, float]:

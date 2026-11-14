@@ -38,6 +38,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent.parent  # llm-comparison/
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I로 실행해도 freeze.py를 찾게
 import freeze  # noqa: E402
+import records as runlog  # noqa: E402  기록 형식과 읽기 (analysis/, grading/도 같은 모듈을 씀)
 
 
 # ---------------------------------------------------------------------------
@@ -684,6 +685,7 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
 
     code_lines = sum(1 for line in (code or "").splitlines() if line.strip()) if success else None
     return {
+        "schema_version": runlog.SCHEMA_VERSION,  # 형식은 harness/records.py에 적혀 있다
         "run_id": run.run_id, "started_at": started,
         "finished_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "order": run.order, "seed": seed,
@@ -820,8 +822,7 @@ def main() -> None:
     # 사람마다 다른 기록 파일에 쓴다. 각자 커밋해도 git에서 충돌하지 않는다. 건너뛸 회차는 모든 기록 파일에서 찾는다.
     who = "" if args.models == "all" else "-" + slug(args.models)
     log_path = out_dir / f"runs{who}{shard_tag}.jsonl"
-    records = [json.loads(line) for path in sorted(out_dir.glob("runs*.jsonl"))
-               for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    records = runlog.load_records(out_dir, required=False)
     if any(r.get("inputs_sha256") != inputs for r in records):
         sys.exit(f"{out_dir}에 다른 입력으로 돌린 회차가 있다. 입력을 되돌리거나 다른 폴더(--out)를 쓴다.")
     done = {r["run_id"] for r in records}
@@ -846,7 +847,7 @@ def main() -> None:
             log.write(json.dumps(result, ensure_ascii=False) + "\n")
 
 
-CONTEXT_TOKENS = BASE / "runs" / "context_tokens.jsonl"
+CONTEXT_TOKENS = runlog.CONTEXT_TOKENS
 MEASURE_ASK = "\n\n위 문서를 받았으면 OK라고만 답하세요."
 
 

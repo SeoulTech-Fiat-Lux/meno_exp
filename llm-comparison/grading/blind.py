@@ -16,13 +16,16 @@
 import argparse
 import csv
 import itertools
-import json
 import secrets
 import shutil
 import string
+import sys
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE / "harness"))
+import records as runlog  # noqa: E402
+
 ALPHABET = string.ascii_lowercase + string.digits
 
 
@@ -48,10 +51,8 @@ def main() -> None:
     if not shared_assets.exists():
         shutil.copytree(BASE / "assets", shared_assets)
 
-    # 사람마다 기록 파일이 따로 있다 (runs.jsonl, runs-<모델>-<몫>.jsonl). 모두 모은다.
-    records = [json.loads(line) for path in sorted(args.runs_dir.glob("runs*.jsonl"))
-               for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    records = [r for r in records if r["build_success"] and (args.runs_dir / r["run_id"] / "game").exists()]
+    # 사람마다 기록 파일이 따로 있다 (runs.jsonl, runs-<모델>-<몫>.jsonl). 모두 모은다. 형식은 harness/records.py
+    records = [r for r in runlog.load_records(args.runs_dir) if r["build_success"] and (args.runs_dir / r["run_id"] / "game").exists()]
     # 채점자 조합을 돌려 가며 배정해 부담을 고르게 한다. 순서도 무작위로 섞는다.
     pairs = itertools.cycle(itertools.combinations(graders, args.per_run))
     used, mapping_rows, assignment_rows = set(), [], []

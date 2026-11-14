@@ -20,10 +20,13 @@ llm-comparison/
   contexts/                 조건별 문맥 규칙(manifest.json), 묶음 생성기, 묶음(bundles/)
   freeze.lock.json          동결 잠금 (동결 때 생성. 본 실행은 이 파일과 입력이 같아야 시작)
   prompts/                  지시문, 빌드 오류·형식 오류·길이 초과 피드백 문구
-  harness/                  run.py(회차 실행), freeze.py(동결 잠금), run_noinput.sh(무입력 실행·녹화), frametime_stats.py
-  grading/                  채점표 초안(sheets/), 채점표 생성기, 블라인드 묶음 생성기
+  harness/                  회차 결과를 바꾸는 코드만 (폴더째 동결): run.py(회차 실행), records.py(기록 형식과 읽기),
+                            freeze.py(동결 잠금), run_noinput.sh(무입력 실행·녹화), frametime_stats.py
+  grading/                  채점: 채점표(sheets/), 채점표 생성기, 블라인드 묶음(blind.py), 채점 집계(collect.py)
+  analysis/                 결과 읽기: 시범 요약(summarize.py), 사전 등록 분석(analyze.py), 빌드 오류 분류(errors.py)
+  tests/                    가짜 출력으로 하니스·채점·분석을 확인하는 테스트 (python3 tests/run_all.py)
   smoke/                    템플릿 점검용 프로그램
-  runs/                     회차 결과 (runs.jsonl, 회차별 폴더)
+  runs/                     회차 결과 (사람마다 runs-*.jsonl, 회차별 폴더)
 benchmark/                  #30 성능 측정: bench.toml(조건), run.py(실행기), summarize.py(표·그래프), results/
 ```
 
@@ -88,7 +91,7 @@ python3 harness/run.py --games pilot                    # 시범 실행 (퐁 × 
 ```
 
 ```bash
-python3 harness/summarize.py runs/pilot-<입력 해시>      # 결과 요약과 본 실행 추정 (폴더 이름은 시범 실행이 출력함)
+python3 analysis/summarize.py runs/pilot-<입력 해시>      # 결과 요약과 본 실행 추정 (폴더 이름은 시범 실행이 출력함)
 ```
 
 본 실행(동결 상태에서만 시작)은 사람마다 자기 몫만 돌린다.

@@ -5,7 +5,7 @@
     python3 harness/freeze.py write   # 일관성 검사를 통과하면 현재 입력의 해시를 잠금 파일에 기록 (동결)
 
 잠금 대상은 회차 결과를 바꿀 수 있는 모든 입력이다: 설정, 지시문, 템플릿, 명세, 문맥 목록과 묶음, 에셋,
-채점표, 하니스. 본 실행(run.py --games main)은 잠금 파일이 없거나 입력이 잠금과 다르면 시작하지 않는다.
+채점표, 하니스(harness/ 폴더 전체). 본 실행(run.py --games main)은 잠금 파일이 없거나 입력이 잠금과 다르면 시작하지 않는다.
 
 일관성 검사:
 - 템플릿의 meno 커밋과 문맥 목록(manifest.json)의 meno 커밋이 같다 (빌드하는 코드와 LLM에게 주는 문서가 같은 버전).
@@ -26,10 +26,12 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 LOCK = BASE / "freeze.lock.json"
+# harness/는 폴더째 잠근다. 회차 결과를 바꾸는 코드만 이 폴더에 둔다 (결과를 읽는 도구는 analysis/, 채점은 grading/).
+# 파일을 하나하나 적으면, 새 모듈을 만들고 목록에 넣는 것을 잊었을 때 동결 검사를 조용히 빠져나간다.
 FROZEN = [
     "experiment.toml", "requirements.txt", "prompts", "templates", "specs/games",
     "contexts/manifest.json", "contexts/bundles", "assets", "grading/sheets",
-    "harness/run.py", "harness/run_noinput.sh", "harness/frametime_stats.py",
+    "harness",
 ]
 
 
@@ -39,7 +41,7 @@ def file_hashes() -> dict[str, str]:
         path = BASE / entry
         files = sorted(p for p in path.rglob("*") if p.is_file()) if path.is_dir() else [path]
         for file in files:
-            if "__pycache__" in file.parts:
+            if "__pycache__" in file.parts or file.suffix == ".pyc":
                 continue
             hashes[file.relative_to(BASE).as_posix()] = hashlib.sha256(file.read_bytes()).hexdigest()
     return hashes

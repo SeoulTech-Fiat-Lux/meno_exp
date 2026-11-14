@@ -168,7 +168,7 @@ API 키 대신 각자의 구독 로그인으로 CLI를 불러 모델에게 묻�
   차이를 문맥 토큰으로 기록한다(`runs/context_tokens.jsonl`, 조건별 1호출 + 공통 1호출). 로컬에 Claude 토크나이저가
   없고, 한국어(meno)와 영어(SFML)는 바이트당 토큰 수가 달라 바이트로는 나눌 수 없기 때문이다. CLI가 붙이는 시스템
   프롬프트는 두 호출에 똑같이 들어가 빠진다.
-- **요약:** `harness/summarize.py <기록 폴더>`가 모델·조건별 빌드 성공, 1왕복 성공, 왕복 수, 입력 토큰(문맥 몫과 그 밖),
+- **요약:** `analysis/summarize.py <기록 폴더>`가 모델·조건별 빌드 성공, 1왕복 성공, 왕복 수, 입력 토큰(문맥 몫과 그 밖),
   출력·추론 토큰, 시간, 실패 사유를 표로 내고, 시범 평균으로 본 실행의 사람별 회차·호출·토큰·시간을 추정한다.
 
 퐁은 가이드에 같은 게임의 완성 코드가 있어(D11) 본 실행에서 빼므로, 결과가 본 분석에 섞이지 않는 시범 게임으로 쓴다.
@@ -301,13 +301,20 @@ meno_exp/
     prompts/                    지시문, 빌드 오류·형식 오류·길이 초과 피드백 문구
     templates/{meno,sfml}/      빌드 템플릿
     smoke/                      템플릿 점검용 프로그램 (mock 모델의 답으로도 씀)
-    harness/run.py              회차 실행 (LiteLLM, 빌드 재시도, 무입력 실행, JSONL, 이어서 실행, 입력별 기록 폴더)
-    harness/freeze.py           동결 잠금 생성·확인과 일관성 검사 (본 실행 전 필수)
-    harness/run_noinput.sh      무입력 실행·녹화·프레임 시간
-    harness/frametime_stats.py  프레임 시간 통계
+    harness/                    회차 결과를 바꾸는 코드만 둔다. freeze.py가 폴더째 잠근다
+      run.py                    회차 실행 (구독 CLI·LiteLLM 백엔드, 빌드 재시도, 무입력 실행, 이어서 실행, 입력별 기록 폴더)
+      records.py                회차 기록 형식(schema_version)과 읽기. 기록을 읽는 곳은 모두 이 모듈을 씀
+      freeze.py                 동결 잠금 생성·확인과 일관성 검사 (본 실행 전 필수)
+      run_noinput.sh            무입력 실행·녹화·프레임 시간
+      frametime_stats.py        프레임 시간 통계
     grading/make_sheets.py      명세 md에서 채점표 초안 생성
     grading/sheets/*.csv        채점표 초안 (팀이 항목 수를 맞춰 확정)
     grading/blind.py            블라인드 채점 폴더, 채점자 배정, 저장소 밖 대응표 생성
+    grading/collect.py          채점 집계: 일치도, 어긋난 항목, 합의 후 회차별 통과율
+    analysis/summarize.py       시범 요약과 본 실행 추정
+    analysis/analyze.py         사전 등록 분석 (2.4절)
+    analysis/errors.py          빌드 오류 유형 분류
+    tests/run_all.py            가짜 출력으로 하니스·채점·분석 흐름 확인 (LLM·빌드 없이). 하니스를 고친 뒤와 동결 전에 돌림
 ```
 
 `harness/run.py`는 API 키 없이 `--mock`으로 처음부터 끝까지 돌려 볼 수 있다 (5절). 실제 API 경로는 LiteLLM의

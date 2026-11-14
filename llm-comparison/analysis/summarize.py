@@ -1,28 +1,26 @@
 """회차 기록을 (모델, 조건)별로 묶어 요약하고, 본 실행의 일정을 추정한다. 시범 실행 뒤 예산·일정을 정하는 데 쓴다.
 
 사용 (llm-comparison/ 에서):
-    python3 harness/summarize.py runs/pilot-<입력 해시>       # 시범 결과 요약 + 본 실행 추정
-    python3 harness/summarize.py runs/main --no-projection    # 본 실행 진행 상황
+    python3 analysis/summarize.py runs/pilot-<입력 해시>       # 시범 결과 요약 + 본 실행 추정
+    python3 analysis/summarize.py runs/main --no-projection    # 본 실행 진행 상황
 
 읽는 것: <폴더>/runs*.jsonl (사람마다 따로 쓴 기록 모두), runs/context_tokens.jsonl (run.py --measure-context).
+형식은 harness/records.py에 있다.
 본 실행 추정은 시범 회차의 평균을 본 실행의 모든 모델에 그대로 적용한 어림값이다. 게임이 퐁보다 크면 더 든다.
 """
 from __future__ import annotations
 
 import argparse
-import json
 import statistics
+import sys
 import tomllib
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
-
-
-def load_jsonl(paths) -> list[dict]:
-    return [json.loads(line) for path in paths for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()]
+sys.path.insert(0, str(BASE / "harness"))
+import records as runlog  # noqa: E402
 
 
 def mean(values) -> float | None:
@@ -153,14 +151,9 @@ def main() -> None:
     parser.add_argument("runs_dir", type=Path)
     parser.add_argument("--no-projection", action="store_true")
     args = parser.parse_args()
-    paths = sorted(args.runs_dir.glob("runs*.jsonl"))
-    if not paths:
-        raise SystemExit(f"{args.runs_dir}에 runs*.jsonl이 없음")
-    records = load_jsonl(paths)
-    context_file = BASE / "runs" / "context_tokens.jsonl"
-    context_rows = load_jsonl([context_file]) if context_file.exists() else []
-    rows = summarize(records, context_rows)
-    print(f"# {args.runs_dir} (기록 파일 {len(paths)}개, 회차 {len(records)}개)\n")
+    records = runlog.load_records(args.runs_dir)
+    rows = summarize(records, runlog.load_context_tokens())
+    print(f"# {args.runs_dir} (기록 파일 {len(runlog.run_logs(args.runs_dir))}개, 회차 {len(records)}개)\n")
     print_table(rows)
     if not args.no_projection:
         cfg = tomllib.loads((BASE / "experiment.toml").read_text(encoding="utf-8"))

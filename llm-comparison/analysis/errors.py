@@ -11,7 +11,6 @@
 """
 from __future__ import annotations
 
-import json
 import re
 import sys
 from pathlib import Path
@@ -71,8 +70,8 @@ def classify_runs(runs_dir: Path, records: list[dict]) -> list[dict]:
 
 
 if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "harness"))
+    import records as runlog  # 형식은 harness/records.py
     runs_dir = Path(sys.argv[1])
-    records = [json.loads(line) for path in sorted(runs_dir.glob("runs*.jsonl"))
-               for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    for row in classify_runs(runs_dir, records):
+    for row in classify_runs(runs_dir, runlog.load_records(runs_dir)):
         print(f"{row['condition']:5} {row['category']:13} {row['run_id']} r{row['round']}: {row['first_error'][:120]}")
