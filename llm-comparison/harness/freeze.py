@@ -11,11 +11,13 @@
 - 템플릿의 meno 커밋과 문맥 목록(manifest.json)의 meno 커밋이 같다 (빌드하는 코드와 LLM에게 주는 문서가 같은 버전).
 - 두 템플릿의 SFML 커밋이 manifest.json의 SFML/SFML 커밋과 같다 (두 조건이 같은 SFML로 빌드됨).
 - 템플릿의 모든 GIT_TAG가 40자리 커밋 해시다.
+- 동결 전에 끝낼 일: specs/sim/ 시뮬레이션 스크립트(D8), 채점표 항목 문장이 지금 명세와 같음.
 - 문맥 묶음의 출처 머리글이 manifest.json의 저장소·커밋·파일 목록과 같다 (목록을 바꾸고 묶음을 다시 만들지 않은 경우를 잡음).
 - 모델 ID가 정해져 있다 (TBD 없음).
 """
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import hashlib
 import json
@@ -71,6 +73,34 @@ def template_tags(cfg: dict) -> dict[str, dict[str, str]]:
             for c, cond in cfg["conditions"].items()}
 
 
+# rationale.md의 무입력 실행 근거가 가리키는 시뮬레이션 스크립트 (D8). 동결 태그에 함께 남아야 수치를 다시 확인할 수 있다.
+SIM_SCRIPTS = ("chase.py", "tank.py", "survivor_noinput.py")
+
+
+def prerequisite_problems(cfg: dict) -> list[str]:
+    """동결 전에 끝나 있어야 하는 일. 잠근 뒤에는 고치면 전부 다시 돌려야 하므로 일찍 잠그지 못하게 한다."""
+    problems = []
+    missing = [name for name in SIM_SCRIPTS if not (BASE / "specs" / "sim" / name).exists()]
+    if missing:
+        problems.append(f"specs/sim/에 시뮬레이션 스크립트가 없음: {', '.join(missing)} (D8)")
+    # 채점표의 모든 항목 문장이 지금 명세에 있어야 한다. 명세를 고치고 채점표를 다시 만들지 않은 경우를 잡는다.
+    # 팀이 항목을 합칠 때는 make_sheets.py처럼 명세 문장을 " / "로 이어 붙이므로, 조각마다 명세에 있는지 본다.
+    for game in [*cfg["games"]["main"], *cfg["games"].get("pilot", [])]:
+        sheet = BASE / "grading" / "sheets" / f"{game}.csv"
+        spec = BASE / "specs" / "games" / f"{game}.md"
+        if not sheet.exists():
+            problems.append(f"채점표가 없음: grading/sheets/{game}.csv")
+            continue
+        text = " ".join(spec.read_text(encoding="utf-8").split())
+        with sheet.open(encoding="utf-8-sig", newline="") as f:
+            stale = [row["id"] for row in csv.DictReader(f)
+                     if any(" ".join(part.split()) not in text for part in row["requirement"].split(" / "))]
+        if stale:
+            problems.append(f"grading/sheets/{game}.csv의 항목 {len(stale)}개가 지금 명세 문장과 다름 "
+                            f"(예: {', '.join(stale[:3])}). 명세를 고쳤다면 채점표를 다시 만든다")
+    return problems
+
+
 def consistency_problems() -> list[str]:
     problems: list[str] = []
     cfg = tomllib.loads((BASE / "experiment.toml").read_text(encoding="utf-8"))
@@ -107,6 +137,8 @@ def consistency_problems() -> list[str]:
         actual = re.findall(r"^<<< (.+?) >>>$", bundle.read_text(encoding="utf-8"), re.M)
         if actual != expected:
             problems.append(f"{bundle.relative_to(BASE)}가 manifest.json과 다름 (build_context.py로 다시 만들 것)")
+
+    problems += prerequisite_problems(cfg)
 
     if any("TBD" in m["id"] or m.get("model") == "TBD" for m in cfg["models"]):
         problems.append("experiment.toml의 모델이 아직 TBD")

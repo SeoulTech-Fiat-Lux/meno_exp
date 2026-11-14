@@ -14,6 +14,7 @@
     test_noinput   1초 미만 종료·깨진 result.json에서도 하니스가 멈추지 않음
     test_summary   문맥 토큰 측정과 시범 요약
     test_records   기록 형식 버전, 기록 파일 모으기, 동결 범위
+    test_merge_showcase  결과 합치기 검사, 대표작 고르기, 동결 전제 조건(sim 스크립트, 채점표와 명세)
     test_analysis  블라인드 묶음 → 채점 → 합의 → 최종 점수 → 사전 등록 분석 (합성 데이터)
 """
 import subprocess

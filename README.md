@@ -109,7 +109,7 @@ python3 harness/run.py --games main --models other-vendor --shard 2/2   # ChatGP
 ```
 
 - **기록 파일:** 사람마다 `runs/main/runs-<모델>[-<몫>].jsonl`에 따로 쓴다. 하니스는 모든 기록 파일을 읽어 이미 끝난 회차를 건너뛴다.
-- **결과 모으기:** 채점 전에 각자 `runs/main/`을 압축해(실행 파일 `game` 포함) 블라인드 묶음을 만드는 사람에게 git 밖으로 보낸다. 그 사람이 하나의 `runs/main/`에 합친 뒤 `grading/blind.py`를 돌린다.
+- **결과 모으기:** 채점 전에 각자 `runs/main/`을 압축해(실행 파일 `game` 포함) 블라인드 묶음을 만드는 사람에게 git 밖으로 보낸다. 그 사람이 `grading/merge_runs.py`로 합친다(아래 채점 절). 입력 해시·동결 상태가 같은지, 회차가 겹치거나 빠졌는지, 실행 파일이 있는지 검사하고, 문제가 있으면 합치지 않는다.
 - **기록 폴더:** 본 실행은 `runs/main/`이다. 시범 실행과 mock은 `runs/pilot-<입력 해시>/`, `runs-mock/pilot-<입력 해시>/`처럼 입력별로 나뉜다. 명세·지시문 등을 고친 뒤 다시 돌리면 새 폴더에 처음부터 기록된다.
 - **빌드 시간:** 조건마다 처음 한 번은 meno·SFML을 내려받아 빌드한다(4코어에서 1분 안팎). 그 뒤 회차마다 `main.cpp`만 바꿔 다시 빌드한다(약 2초).
 - **출력 길이:** `experiment.toml`의 `max_output_tokens`를 상한으로 준다(Codex는 줄 방법이 없음). 길이 제한으로 잘린 답은 회차 기록에 따로 표시된다.
@@ -122,12 +122,22 @@ python3 grading/make_sheets.py            # 채점표 초안 다시 만들기 (�
 ```
 
 ```bash
+python3 grading/merge_runs.py runs/main ~/incoming/claude ~/incoming/chatgpt1 ~/incoming/chatgpt2   # 세 사람 결과 합치기와 검사
+```
+
+```bash
 python3 grading/blind.py runs/main ~/blind ~/sealed/meno-exp-mapping.csv --graders A,B,C   # 대응표는 반드시 저장소 밖에
 ```
 
 - **블라인드 폴더 배포:** `~/blind`를 압축해 채점자에게 나눠 준다. `assignments.csv`에 ID별 채점자가 있다.
 - **채점 방법:** 채점자는 자기에게 배정된 `<ID>/`에서 `./game`을 실행하고, `sheet-<자기 이름>.csv`에 통과·실패를 적는다. 다 하면 `meta-<자기 이름>.csv`에 어느 조건 같은지(meno/sfml/모름), 확신(1~3), 채점에 쓴 분을 적는다.
 - **대응표:** 채점이 끝날 때까지 아무도 열지 않는다. 가능하면 채점하지 않는 사람(지도교수·조교 등)이 보관한다.
+- **채점자 PC(WSL Ubuntu 24.04)에 필요한 런타임 패키지:**
+
+```bash
+sudo apt-get install -y libx11-6 libxrandr2 libxcursor1 libxi6 libudev1 libgl1 libgl1-mesa-dri \
+  libfreetype6 libharfbuzz0b libflac12t64 libvorbis0a libvorbisenc2 libvorbisfile3 libogg0
+```
 
 채점이 끝나면 모은 `~/blind`에서 두 단계로 집계한다.
 
@@ -154,12 +164,14 @@ python3 analysis/analyze.py runs/main grading/results/run_scores.csv analysis/re
 ```bash
 python3 analysis/analyze.py runs/pilot-<입력 해시> - analysis/pilot
 ```
-- **채점자 PC(WSL Ubuntu 24.04)에 필요한 런타임 패키지:**
+
+대표작은 게임·조건마다 하나를 고르고(규칙은 PLAN 2.4절), 바로 실행할 수 있는 폴더를 만든다.
 
 ```bash
-sudo apt-get install -y libx11-6 libxrandr2 libxcursor1 libxi6 libudev1 libgl1 libgl1-mesa-dri \
-  libfreetype6 libharfbuzz0b libflac12t64 libvorbis0a libvorbisenc2 libvorbisfile3 libogg0
+python3 analysis/showcase.py runs/main grading/results/run_scores.csv ~/showcase
 ```
+
+녹화는 `cd ~/showcase/<게임>-<조건> && ./game`으로 띄워(WSLg가 창과 소리를 Windows로 보냄) 직접 플레이하면서 Windows 게임 바(Win+Alt+R)로 한다. 무입력 녹화(`run_noinput.sh`)는 소리가 없고 조작할 수 없어 대표작에는 쓰지 않는다.
 
 ## 동결 절차
 
@@ -180,7 +192,8 @@ sudo apt-get install -y libx11-6 libxrandr2 libxcursor1 libxi6 libudev1 libgl1 l
 5. **시범 실행:** `--games pilot`으로 돌려 비용·문맥 창·녹화 판정·채점표를 확인한다. 고칠 수 있는 것은 명세 문구·템플릿·하니스까지다.
 6. **채점표 확정:** `grading/sheets/`를 팀 내부 문서의 항목 수와 맞춰 고친다.
 7. **잠그기:** `specs/sim/`에 시뮬레이션 스크립트를 넣는다. 그다음 아래 명령으로 잠금 파일(`freeze.lock.json`)을 만들고 커밋한 뒤 `freeze-1` 태그를 단다.
-   - 잠금 도구는 일관성을 먼저 검사한다: 템플릿과 문맥 목록의 meno 커밋이 같은지, 문맥 묶음이 목록과 맞는지, 모델 ID가 정해졌는지.
+   - 잠금 도구는 일관성을 먼저 검사한다: 템플릿과 문맥 목록의 meno·SFML 커밋이 같은지, 문맥 묶음이 목록과 맞는지, 모델이 정해졌는지, `specs/sim/` 스크립트가 있는지, 채점표 문장이 지금 명세와 같은지. 하나라도 걸리면 잠그지 않는다.
+   - 잠그기 직전에 `python3 tests/run_all.py`로 하니스를 확인한다.
    - 본 실행은 잠금 파일이 없거나 입력이 잠금과 다르면 시작하지 않는다.
    ```bash
    python3 harness/freeze.py write
