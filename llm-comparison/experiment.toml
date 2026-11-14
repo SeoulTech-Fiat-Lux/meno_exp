@@ -18,7 +18,7 @@ build_jobs = 4
 [games]
 pilot = ["01-pong"]                                         # D11: 퐁은 시범 전용
 pilot_models = ["light"]                                    # 시범 실행은 경량 모델(claude-haiku-5-5) 하나로
-main = ["02-snake", "03-flappy", "04-shooter", "06-maze"]   # D6 권장안. 팀 확정 후 고칠 것
+main = ["02-snake", "04-shooter", "05-card", "08-formation", "10-missile", "11-survivor"]
 
 [conditions.meno]
 library = "meno"
@@ -47,7 +47,7 @@ tier = "top"
 id = "claude-cli/claude-opus-5-5"
 backend = "claude-cli"
 model = "claude-opus-5-5"
-effort = "high"
+effort = "medium"
 operator = "Claude Max (1인)"
 
 [[models]]
@@ -55,15 +55,15 @@ tier = "light"
 id = "claude-cli/claude-haiku-5-5"
 backend = "claude-cli"
 model = "claude-haiku-5-5"
-effort = "high"
+effort = "medium"
 operator = "Claude Max (1인)"
 
 # GPT-5.5는 2026-10-14부터 ChatGPT 로그인 Codex에서 빠졌다(Codex 문서). 날짜 고정판도 쓸 수 없다.
-# Plus에서 쓸 수 있는 모델을 `codex` 안의 /model 목록으로 확인한 뒤 정한다 (문서상 gpt-6.1-sol, gpt-6.1-terra, gpt-6-luna).
+# Plus에서 쓸 수 있는 모델 중 gpt-6.1-sol로 정했다 (문서상 Plus 기본 모델. 별칭이라 회차마다 CLI 버전·날짜를 기록).
 [[models]]
 tier = "other-vendor"
-id = "codex-cli/TBD"
+id = "codex-cli/gpt-6.1-sol"
 backend = "codex-cli"
-model = "TBD"
-effort = "high"
+model = "gpt-6.1-sol"
+effort = "medium"
 operator = "ChatGPT Plus (2인, --shard로 나눔)"
