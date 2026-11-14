@@ -1,0 +1,48 @@
+# LLM 생성 비교 실험 설정. 하니스(harness/run.py)가 읽는다.
+# 동결 후에는 바꾸지 않는다. 바꾸면 이미 돌린 회차와 비교할 수 없다.
+
+[experiment]
+reps = 3                    # 같은 (모델, 게임, 조건)을 반복하는 횟수
+max_rounds = 5              # 빌드 시도 횟수 상한 (첫 응답 포함)
+error_feedback_lines = 100  # 빌드 실패 시 돌려주는 컴파일러 출력 줄 수
+noinput_seconds = 30        # 무입력 실행 시간
+llm_timeout_seconds = 900   # API 호출 한 번의 제한 시간
+api_retries = 5             # API 오류 재시도 횟수 (왕복으로 세지 않음)
+seed = 20261114             # 회차 순서를 섞는 시드
+build_jobs = 4
+
+[games]
+pilot = ["01-pong"]                                         # D11: 퐁은 시범 전용
+main = ["02-snake", "03-flappy", "04-shooter", "06-maze"]   # D6 권장안. 팀 확정 후 고칠 것
+
+[conditions.meno]
+library = "meno"
+rule = "meno 공개 헤더(<meno/...>)와 C++20 표준 라이브러리만 씁니다. SFML 헤더는 쓸 수 없습니다."
+template_dir = "templates/meno"
+context = "contexts/bundles/meno.md"
+mock_source = "smoke/meno/main.cpp"
+
+[conditions.sfml]
+library = "SFML 3.1"
+rule = "SFML 3.1 헤더(<SFML/...>)와 C++20 표준 라이브러리만 씁니다."
+template_dir = "templates/sfml"
+context = "contexts/bundles/sfml.md"
+mock_source = "smoke/sfml/main.cpp"
+
+# 모델: id는 LiteLLM 모델 문자열 (예: "anthropic/<모델 ID>", "openai/<모델 ID>").
+# 실행 날짜와 실제 응답 모델 ID는 하니스가 회차마다 기록한다.
+# params는 그대로 litellm.completion()에 넘긴다. 비워 두면 모델 기본값.
+[[models]]
+tier = "top"
+id = "TBD/top-model"
+params = {}
+
+[[models]]
+tier = "light"
+id = "TBD/light-model"
+params = {}
+
+[[models]]
+tier = "other-vendor"
+id = "TBD/other-vendor-model"
+params = {}

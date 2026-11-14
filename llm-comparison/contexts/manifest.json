@@ -1,0 +1,65 @@
+{
+  "rule": [
+    "각 라이브러리의 공식 사용법 문서를 고치지 않고 준다: README + 튜토리얼·가이드 + 공식 이행(migration) 문서.",
+    "API 레퍼런스(Doxygen)는 양쪽 모두 뺀다.",
+    "설치·빌드 연결 문서는 양쪽 모두 뺀다. 빌드 템플릿이 대신한다 (meno 가이드 1장, SFML Getting started).",
+    "템플릿이 링크하지 않는 기능의 문서는 뺀다 (SFML Network 모듈, Window 모듈의 OpenGL 페이지).",
+    "파일 순서는 각 문서의 공식 목차 순서를 따른다. 파일마다 출처 머리글 한 줄만 붙여 이어 붙인다."
+  ],
+  "meno": [
+    {
+      "repo": "SeoulTech-Fiat-Lux/Meno",
+      "commit": "67a3979d9ed12928cdd55e7afb01174594099345",
+      "commit_note": "현재 main. 동결 태그를 만들면 그 커밋으로 바꾼다",
+      "files": [
+        "README.md",
+        "docs/guide/02-first-game.md",
+        "docs/guide/03-drawing.md",
+        "docs/guide/04-input.md",
+        "docs/guide/05-gameobjects.md",
+        "docs/guide/06-collision.md",
+        "docs/guide/07-scenes.md",
+        "docs/guide/08-audio.md",
+        "docs/guide/09-resources.md",
+        "docs/guide/10-camera.md",
+        "docs/guide/11-animation.md",
+        "docs/guide/12-application.md"
+      ]
+    }
+  ],
+  "sfml": [
+    {
+      "repo": "SFML/SFML",
+      "commit": "8835b6b955c96fa1ad1278a8dae6f05c4143effc",
+      "commit_note": "태그 3.1.0",
+      "files": ["readme.md"]
+    },
+    {
+      "repo": "SFML/SFML-Website",
+      "commit": "6d461d96c47d795c671f10e723a1b9ce13533edb",
+      "commit_note": "2026-10-19. 사이트 문서는 계속 바뀌므로 커밋으로 고정한다",
+      "files": [
+        "pages/tutorials/3.1/migration/sfml-3.0.md",
+        "pages/tutorials/3.1/migration/sfml-2.md",
+        "pages/tutorials/3.1/system/time.md",
+        "pages/tutorials/3.1/system/angle.md",
+        "pages/tutorials/3.1/system/stream.md",
+        "pages/tutorials/3.1/window/window.md",
+        "pages/tutorials/3.1/window/events.md",
+        "pages/tutorials/3.1/window/inputs.md",
+        "pages/tutorials/3.1/graphics/draw.md",
+        "pages/tutorials/3.1/graphics/sprite.md",
+        "pages/tutorials/3.1/graphics/shape.md",
+        "pages/tutorials/3.1/graphics/text.md",
+        "pages/tutorials/3.1/graphics/transform.md",
+        "pages/tutorials/3.1/graphics/view.md",
+        "pages/tutorials/3.1/graphics/vertex-array.md",
+        "pages/tutorials/3.1/graphics/shader.md",
+        "pages/tutorials/3.1/audio/sounds.md",
+        "pages/tutorials/3.1/audio/recording.md",
+        "pages/tutorials/3.1/audio/spatialization.md",
+        "pages/tutorials/3.1/audio/streams.md"
+      ]
+    }
+  ]
+}

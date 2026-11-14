@@ -1,0 +1,10 @@
+# Windows에서 커밋해도 WSL·Linux에서 스크립트가 돌도록 줄바꿈을 LF로 고정한다.
+* text=auto eol=lf
+
+*.png  binary
+*.gif  binary
+*.wav  binary
+*.ogg  binary
+*.ttf  binary
+*.pptx binary
+*.xlsx binary

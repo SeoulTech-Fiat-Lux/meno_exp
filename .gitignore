@@ -1,0 +1,23 @@
+# 비밀 정보 (API 키)
+.env
+
+# 빌드 산출물, 하니스 작업 폴더
+build*/
+_deps/
+llm-comparison/work/
+
+# Python
+__pycache__/
+.venv/
+
+# 대용량 산출물은 git 밖에 보관 (녹화, 실행 파일)
+*.mp4
+*.mkv
+llm-comparison/runs/**/game
+llm-comparison/runs-mock/
+
+# 블라인드 채점 폴더. 대응표는 blind.py가 저장소 밖에만 쓰게 하고, 채점이 끝난 뒤 grading/mapping.csv로 커밋한다
+blind/
+
+# 문맥 묶음을 만들 때 받는 출처 저장소
+llm-comparison/contexts/src/
