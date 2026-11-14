@@ -170,9 +170,12 @@ class Reply:
     model: str
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
-    cached_tokens: int | None = None
+    cached_tokens: int | None = None          # 캐시에서 읽은 입력 토큰 (비용 계산용)
+    cache_write_tokens: int | None = None     # 캐시에 새로 쓴 입력 토큰 (Anthropic)
+    reasoning_tokens: int | None = None       # 출력 토큰 중 추론 토큰 (추론 모델만)
     cost: float | None = None
     finish_reason: str | None = None
+    refused: bool = False                     # 공급자가 거부라고 알려 준 답
     latency_s: float = 0.0
     extra: dict = field(default_factory=dict)
 
@@ -192,6 +195,31 @@ class MockLLM:
                      completion_tokens=len(code) // 4, finish_reason="stop")
 
 
+REFUSAL_FINISH = {"content_filter", "refusal"}  # 공급자가 거부를 알리는 종료 사유 (OpenAI, Anthropic)
+
+
+def wants_cache_control(model_id: str) -> bool:
+    """명시적 캐시 지점이 있어야 캐시가 걸리는 모델(Claude 계열)인지. OpenAI·Gemini는 자동으로 캐시한다."""
+    return "claude" in model_id.lower() or model_id.lower().startswith("anthropic/")
+
+
+def with_cache_breakpoint(messages: list[dict]) -> list[dict]:
+    """첫 user 메시지(지시문 + 문맥 + 템플릿 + 명세) 끝에 캐시 지점을 둔다. 왕복마다 이 앞부분이 같으므로
+    두 번째 왕복부터 캐시에서 읽는다. 캐시는 답에 영향을 주지 않고 비용과 응답 시간만 줄인다."""
+    first, rest = messages[0], messages[1:]
+    block = {"type": "text", "text": first["content"], "cache_control": {"type": "ephemeral"}}
+    return [{"role": first["role"], "content": [block]}, *rest]
+
+
+def _usage_field(obj, *names):
+    """LiteLLM usage 객체·dict 어느 쪽이든 중첩 필드를 꺼낸다."""
+    for name in names:
+        if obj is None:
+            return None
+        obj = obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+    return obj
+
+
 class LiteLLM:
     def __init__(self, cfg: dict):
         import litellm  # 실제 호출할 때만 필요
@@ -205,6 +233,8 @@ class LiteLLM:
             "InternalServerError") if hasattr(self.litellm.exceptions, name))
         # 출력 길이 상한은 공급자 기본값에 맡기지 않고 모든 모델에 같은 값을 준다. 모델 params가 있으면 그것이 우선.
         params = {"max_tokens": exp["max_output_tokens"]} | run.model.get("params", {})
+        if exp.get("prompt_cache", False) and wants_cache_control(run.model["id"]):
+            messages = with_cache_breakpoint(messages)
         for attempt in range(exp["api_retries"] + 1):
             start = time.monotonic()
             try:
@@ -219,17 +249,23 @@ class LiteLLM:
                 time.sleep(wait)
         latency = time.monotonic() - start
         usage = getattr(response, "usage", None)
-        details = getattr(usage, "prompt_tokens_details", None) if usage else None
         try:
             cost = self.litellm.completion_cost(completion_response=response)
         except Exception:  # 가격표에 없는 모델
             cost = None
         choice = response.choices[0]
+        finish = getattr(choice, "finish_reason", None)
+        # 거부는 공급자가 알려 준 신호로만 판별한다: 종료 사유, 또는 OpenAI의 message.refusal.
+        # 설명만 있고 코드가 없는 답은 거부로 보지 않고 형식 오류로 다룬다 (사람의 판단이 섞이지 않게).
+        refusal_text = getattr(choice.message, "refusal", None)
         return Reply(content=choice.message.content or "", model=getattr(response, "model", ""),
-                     prompt_tokens=getattr(usage, "prompt_tokens", None),
-                     completion_tokens=getattr(usage, "completion_tokens", None),
-                     cached_tokens=getattr(details, "cached_tokens", None) if details else None,
-                     cost=cost, finish_reason=getattr(choice, "finish_reason", None), latency_s=latency)
+                     prompt_tokens=_usage_field(usage, "prompt_tokens"),
+                     completion_tokens=_usage_field(usage, "completion_tokens"),
+                     cached_tokens=_usage_field(usage, "prompt_tokens_details", "cached_tokens"),
+                     cache_write_tokens=_usage_field(usage, "cache_creation_input_tokens"),
+                     reasoning_tokens=_usage_field(usage, "completion_tokens_details", "reasoning_tokens"),
+                     cost=cost, finish_reason=finish, refused=finish in REFUSAL_FINISH or bool(refusal_text),
+                     latency_s=latency, extra={"refusal": refusal_text} if refusal_text else {})
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +315,7 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
     messages = [{"role": "user", "content": prompt}]
     rounds: list[dict] = []
     started = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-    success, code = False, None
+    success, code, failure = False, None, None
     for number in range(1, exp["max_rounds"] + 1):
         reply = llm.complete(run, messages)
         (run_dir / f"response_{number}.md").write_text(reply.content, encoding="utf-8")
@@ -287,9 +323,20 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
         code, blocks = extract_code(reply.content)
         truncated = reply.finish_reason == "length"
         record = {"round": number, "model_served": reply.model, "prompt_tokens": reply.prompt_tokens,
-                  "completion_tokens": reply.completion_tokens, "cached_tokens": reply.cached_tokens,
+                  "completion_tokens": reply.completion_tokens, "reasoning_tokens": reply.reasoning_tokens,
+                  "cached_tokens": reply.cached_tokens, "cache_write_tokens": reply.cache_write_tokens,
                   "cost": reply.cost, "finish_reason": reply.finish_reason, "truncated": truncated,
+                  "refused": reply.refused,
                   "latency_s": round(reply.latency_s, 2), "code_found": code is not None, "code_blocks": blocks}
+        if reply.extra.get("refusal"):
+            record["refusal_text"] = reply.extra["refusal"]
+        if reply.refused:
+            # 공급자가 거부를 알리면 바로 실패로 끝낸다. 같은 요청을 다시 보내도 대개 또 거부해 왕복만 쓴다.
+            record["build_ok"] = False
+            rounds.append(record)
+            failure = "refused"
+            print(f"  왕복 {number}: 공급자 거부 ({reply.finish_reason}) → 실패", flush=True)
+            break
         if code is None:
             record["build_ok"] = False
             rounds.append(record)
@@ -310,6 +357,8 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
                           ERRORS=error_excerpt(log, exp["error_feedback_lines"], work))
         (run_dir / f"feedback_{number}.md").write_text(feedback, encoding="utf-8")
         messages.append({"role": "user", "content": feedback})
+    if not success and failure is None:
+        failure = "rounds_exhausted"
 
     noinput = None
     if success:
@@ -336,9 +385,13 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
         "model_params": run.model.get("params", {}),
         "models_served": sorted({r["model_served"] for r in rounds if r.get("model_served")}),
         "game": run.game, "condition": run.condition, "rep": run.rep,
-        "rounds": len(rounds), "build_success": success,
+        "rounds": len(rounds), "build_success": success, "failure": failure,
+        # 비교 지표는 캐시와 무관한 원래 토큰 수(prompt_tokens, completion_tokens)다. 캐시 토큰은 비용 설명용.
         "prompt_tokens": total("prompt_tokens"), "completion_tokens": total("completion_tokens"),
-        "cached_tokens": total("cached_tokens"), "cost": total("cost"),
+        "reasoning_tokens": total("reasoning_tokens"),
+        "cached_tokens": total("cached_tokens"), "cache_write_tokens": total("cache_write_tokens"),
+        "prompt_cache": bool(exp.get("prompt_cache", False) and wants_cache_control(run.model["id"])),
+        "cost": total("cost"),
         "llm_latency_s": total("latency_s"), "code_lines": code_lines,
         "truncated_rounds": sum(1 for r in rounds if r.get("truncated")),
         "context_bytes": meta["context_bytes"], "hashes": meta["hashes"],

@@ -9,6 +9,7 @@ noinput_seconds = 30        # 무입력 실행 시간
 llm_timeout_seconds = 900   # API 호출 한 번의 제한 시간
 max_output_tokens = 32000   # 모든 모델에 같은 출력 상한. 추론 모델은 추론 토큰도 여기에 포함되므로 넉넉히 둠
 api_retries = 5             # API 오류 재시도 횟수 (왕복으로 세지 않음)
+prompt_cache = true         # Claude 계열에 첫 메시지 캐시 지점을 둠 (OpenAI·Gemini는 자동). 답에는 영향 없고 비용·응답 시간만 줄어듦
 seed = 20261114             # 회차 순서를 섞는 시드
 build_jobs = 4
 
