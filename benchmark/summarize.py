@@ -55,17 +55,32 @@ def main() -> None:
 
     by = {(r["target"], r["count"]): r for r in rows}
     counts = sorted({r["count"] for r in rows})
-    lines = [
-        "| N | meno 평균 (ms) | SFML 평균 (ms) | 평균 비 (meno/SFML) | meno p99 (ms) | SFML p99 (ms) | p99 비 |",
-        "|---:|---:|---:|---:|---:|---:|---:|",
-    ]
-    for n in counts:
-        m, s = by.get(("meno", n)), by.get(("sfml", n))
-        cell = lambda r, k: f"{r[k + '_ms']:.3f}" if r else "-"
-        ratio = lambda k: f"{m[k + '_ms'] / s[k + '_ms']:.2f}" if m and s else "-"
-        lines.append(f"| {n} | {cell(m, 'mean')} | {cell(s, 'mean')} | {ratio('mean')} "
-                     f"| {cell(m, 'p99')} | {cell(s, 'p99')} | {ratio('p99')} |")
-    lines.append("")
+    # 대상 순서는 bench.toml의 targets를 따른다(env.json에 기록됨). 첫 대상이 기준이고, 이어지는 대상은
+    # 앞 대상에 한 단계를 얹은 것이라 이웃한 두 대상의 비가 그 단계의 비용이다.
+    env_path = out / "env.json"
+    order = json.loads(env_path.read_text(encoding="utf-8")).get("config", {}).get("sweep", {}).get("targets", [])         if env_path.exists() else []
+    targets = [t for t in order if any(r["target"] == t for r in rows)] +         sorted({r["target"] for r in rows} - set(order))
+    pairs = list(zip(targets[1:], targets[:-1]))
+    if len(targets) > 2:
+        pairs.append((targets[-1], targets[0]))
+
+    def cell(target: str, n: int, k: str) -> str:
+        r = by.get((target, n))
+        return f"{r[k + '_ms']:.3f}" if r else "-"
+
+    def ratio(a: str, b: str, n: int, k: str) -> str:
+        ra, rb = by.get((a, n)), by.get((b, n))
+        return f"{ra[k + '_ms'] / rb[k + '_ms']:.2f}" if ra and rb else "-"
+
+    lines = []
+    for k, title in (("mean", "평균"), ("p99", "p99")):
+        header = ["N", *(f"{t} (ms)" for t in targets), *(f"{a}/{b}" for a, b in pairs)]
+        lines += [f"### 프레임 시간 {title}", "", "| " + " | ".join(header) + " |",
+                  "|" + "---:|" * len(header)]
+        for n in counts:
+            row = [str(n), *(cell(t, n, k) for t in targets), *(ratio(a, b, n, k) for a, b in pairs)]
+            lines.append("| " + " | ".join(row) + " |")
+        lines.append("")
     lines.append("값은 반복 사이의 중앙값이다. 반복별 범위는 summary.csv의 *_min, *_max.")
     if failed:
         lines.append(f"\n실패해 빠진 (대상, N, 반복): {sorted(failed)}")
@@ -81,7 +96,7 @@ def main() -> None:
         return
     fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharex=True)
     for ax, s in zip(axes, ("mean", "p99")):
-        for target in sorted({r["target"] for r in rows}):
+        for target in targets:
             rs = [r for r in rows if r["target"] == target]
             ax.errorbar([r["count"] for r in rs], [r[f"{s}_ms"] for r in rs],
                         yerr=[[r[f"{s}_ms"] - r[f"{s}_min"] for r in rs], [r[f"{s}_max"] - r[f"{s}_ms"] for r in rs]],

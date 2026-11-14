@@ -105,10 +105,46 @@ def read_frames(path: Path, expected: int) -> list[float]:
 
 
 def mock_frames(job: dict, frames: int) -> list[float]:
-    # 흐름 점검용 가짜 값. N에 비례하는 비용 + 가끔 튀는 프레임. meno 쪽에 약간의 고정 비용을 얹는다.
+    # 흐름 점검용 가짜 값. N에 비례하는 비용 + 가끔 튀는 프레임. 단계가 늘수록 스프라이트당 비용을 조금씩 얹는다.
     rng = random.Random(str(key(job)))  # 문자열 시드는 실행마다 같다
-    base = 0.4 + job["count"] * (0.0009 if job["target"] == "meno" else 0.0007)
+    per_sprite = {"sfml": 0.0007, "meno-renderer": 0.0008}.get(job["target"], 0.0010)
+    base = 0.4 + job["count"] * per_sprite
     return [base * rng.uniform(0.95, 1.05) * (3 if rng.random() < 0.01 else 1) for _ in range(frames)]
+
+
+def run_binary(binary, run_cfg: dict, proc_env: dict, job: dict, warmup: int, frames: int,
+               csv_path: Path, record: dict) -> None:
+    """실행 파일을 한 번 돌리고 출력 CSV를 검사한다. 실패하면 예외를 던지고, 종료 코드·stderr는 record에 남긴다."""
+    cmd = [a.format(bin=binary, target=job["target"], count=job["count"], seed=job["seed"],
+                    warmup=warmup, frames=frames, out=csv_path) for a in run_cfg["command"]]
+    p = subprocess.run(cmd, env=proc_env, capture_output=True, text=True, timeout=run_cfg["timeout_s"])
+    record |= {"exit_code": p.returncode, "stderr_tail": p.stderr[-2000:]}
+    if p.returncode != 0:
+        raise RuntimeError(f"종료 코드 {p.returncode}")
+    read_frames(csv_path, frames)
+
+
+RUN_ERRORS = (OSError, ValueError, RuntimeError, subprocess.SubprocessError, KeyError)
+
+
+def preflight(binary, cfg: dict, proc_env: dict, work: Path) -> None:
+    """본 측정 전에 대상마다 가장 작은 N으로 짧게 한 번 돌려 본다. 대상 이름이나 출력 형식이 약속과
+    어긋나면 회차를 하나도 기록하기 전에 멈춘다. 이 실행은 기록하지 않는다."""
+    work.mkdir(parents=True, exist_ok=True)
+    failures = []
+    for target in cfg["sweep"]["targets"]:
+        job = {"target": target, "count": min(cfg["sweep"]["counts"]), "seed": 0}
+        record: dict = {}
+        try:
+            run_binary(binary, cfg["run"], proc_env, job, 5, 10, work / f"{target}.csv", record)
+            print(f"사전 점검 {target:<14} OK")
+        except RUN_ERRORS as e:
+            failures.append(target)
+            print(f"사전 점검 {target:<14} 실패: {e}")
+            if record.get("stderr_tail"):
+                print(record["stderr_tail"].rstrip())
+    if failures:
+        sys.exit(f"사전 점검 실패: {failures}. bench.toml의 targets·command가 실행 파일과 맞는지 확인한다 (아무것도 기록하지 않음)")
 
 
 def main() -> None:
@@ -153,6 +189,10 @@ def main() -> None:
         binary = build_dir / cfg["build"]["binary"]
     if not args.mock and not Path(binary).exists():
         sys.exit(f"실행 파일이 없다: {binary}")
+    sweep, run_cfg = cfg["sweep"], cfg["run"]
+    proc_env = os.environ | run_cfg.get("env", {})
+    if not args.mock and todo:
+        preflight(binary, cfg, proc_env, HERE / "work" / "preflight")
 
     (out / "raw").mkdir(parents=True, exist_ok=True)
     # 환경은 처음 한 번만 쓴다. 이어서 돌릴 때 다른 PC에서 돌면 섞이므로 비교해서 경고한다.
@@ -167,8 +207,6 @@ def main() -> None:
         env["config"] = cfg
         env_path.write_text(json.dumps(env, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    sweep, run_cfg = cfg["sweep"], cfg["run"]
-    proc_env = os.environ | run_cfg.get("env", {})
     with log_path.open("a", encoding="utf-8") as log:
         for i, job in enumerate(todo, 1):
             csv_path = out / "raw" / f"{job['target']}-{job['count']}-rep{job['rep']}.csv"
@@ -179,23 +217,17 @@ def main() -> None:
                     values = mock_frames(job, sweep["frames"])
                     csv_path.write_text("frame,frame_ms\n" + "".join(
                         f"{k},{v:.4f}\n" for k, v in enumerate(values)))
+                    read_frames(csv_path, sweep["frames"])
                 else:
-                    cmd = [a.format(bin=binary, target=job["target"], count=job["count"], seed=job["seed"],
-                                    warmup=sweep["warmup_frames"], frames=sweep["frames"], out=csv_path)
-                           for a in run_cfg["command"]]
-                    p = subprocess.run(cmd, env=proc_env, capture_output=True, text=True,
-                                       timeout=run_cfg["timeout_s"])
-                    record |= {"exit_code": p.returncode, "stderr_tail": p.stderr[-2000:]}
-                    if p.returncode != 0:
-                        raise RuntimeError(f"종료 코드 {p.returncode}")
-                read_frames(csv_path, sweep["frames"])
+                    run_binary(binary, run_cfg, proc_env, job, sweep["warmup_frames"], sweep["frames"],
+                               csv_path, record)
                 record["ok"] = True
-            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, KeyError) as e:
+            except RUN_ERRORS as e:
                 record["error"] = str(e)
             record["wall_s"] = round(time.monotonic() - start, 2)
             log.write(json.dumps(record, ensure_ascii=False) + "\n")
             log.flush()
-            print(f"[{i}/{len(todo)}] rep {job['rep']} {job['target']:<5} N={job['count']:<6} "
+            print(f"[{i}/{len(todo)}] rep {job['rep']} {job['target']:<14} N={job['count']:<6} "
                   f"{'OK' if record['ok'] else '실패: ' + record['error']}")
 
     print(f"요약: python3 summarize.py {out}")
