@@ -74,13 +74,22 @@ def template_tags(cfg: dict) -> dict[str, dict[str, str]]:
 
 
 # rationale.md의 무입력 실행 근거가 가리키는 시뮬레이션 스크립트 (D8). 동결 태그에 함께 남아야 수치를 다시 확인할 수 있다.
-SIM_SCRIPTS = ("chase.py", "tank.py", "survivor_noinput.py")
+# 게임 → 무입력 기준을 낸 스크립트. 실험에 쓰는 게임(games.main, games.pilot)의 것만 요구한다.
+# 나머지 게임은 rationale.md에 계산식으로 근거가 있어 스크립트가 필요 없다.
+SIM_SCRIPTS = {
+    "04-shooter": "shooter_noinput.py",    # 첫 피격·결과 화면 시각 (2000회)
+    "06-maze": "chase.py",                 # 추격 경로, 미로 연결·막다른 길 검사
+    "07-rocks": "rocks_noinput.py",        # 화면 끝을 넘어 먼저 부딪히는 경우 (약 5%)
+    "09-tank": "tank.py",                  # 맵 대칭, 시작 칸 연결
+    "11-survivor": "survivor_noinput.py",  # 첫 접촉 시각, 레벨업 카드에서 멈추는 비율 (200회)
+}
 
 
 def prerequisite_problems(cfg: dict) -> list[str]:
     """동결 전에 끝나 있어야 하는 일. 잠근 뒤에는 고치면 전부 다시 돌려야 하므로 일찍 잠그지 못하게 한다."""
     problems = []
-    missing = [name for name in SIM_SCRIPTS if not (BASE / "specs" / "sim" / name).exists()]
+    used = [*cfg["games"]["main"], *cfg["games"].get("pilot", [])]
+    missing = [SIM_SCRIPTS[g] for g in used if g in SIM_SCRIPTS and not (BASE / "specs" / "sim" / SIM_SCRIPTS[g]).exists()]
     if missing:
         problems.append(f"specs/sim/에 시뮬레이션 스크립트가 없음: {', '.join(missing)} (D8)")
     # 채점표의 모든 항목 문장이 지금 명세에 있어야 한다. 명세를 고치고 채점표를 다시 만들지 않은 경우를 잡는다.

@@ -108,15 +108,16 @@ assert all((tmp / "showcase" / r["folder"] / "game").exists() for r in rows)
 fake = tmp / "freeze_base"
 (fake / "specs" / "games").mkdir(parents=True)
 (fake / "grading" / "sheets").mkdir(parents=True)
-game = cfg["games"]["main"][0]
+game = "11-survivor"  # 시뮬레이션 스크립트가 필요한 게임
 shutil.copy(LC / "specs" / "games" / f"{game}.md", fake / "specs" / "games" / f"{game}.md")
 shutil.copy(LC / "grading" / "sheets" / f"{game}.csv", fake / "grading" / "sheets" / f"{game}.csv")
 freeze.BASE = fake
 mini = {"games": {"main": [game]}}
 probs = freeze.prerequisite_problems(mini)
-assert len(probs) == 1 and "specs/sim" in probs[0], probs
+assert len(probs) == 1 and "survivor_noinput.py" in probs[0], probs
+assert not [p for p in freeze.prerequisite_problems({"games": {"main": []}}) if "sim" in p]  # 쓰지 않는 게임의 스크립트는 요구하지 않음
 (fake / "specs" / "sim").mkdir()
-for name in freeze.SIM_SCRIPTS:
+for name in freeze.SIM_SCRIPTS.values():
     (fake / "specs" / "sim" / name).write_text("# sim\n")
 assert freeze.prerequisite_problems(mini) == []
 spec = fake / "specs" / "games" / f"{game}.md"
