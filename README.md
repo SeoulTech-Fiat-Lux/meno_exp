@@ -11,6 +11,7 @@ meno 실험 저장소. 공개 저장소 SeoulTech-Fiat-Lux/Meno의 다음 이슈
 
 ```
 PLAN.md                     실행 계획과 결정 사항
+docs/pilot-2026-11-14.md    시범 실행 보고 (결과, 고친 문제, 남은 확인)
 LICENSES.md                 라이선스와 출처
 llm-comparison/
   experiment.toml           실험 설정 (게임, 조건, 모델, 반복·왕복 수)
@@ -23,7 +24,8 @@ llm-comparison/
   harness/                  회차 결과를 바꾸는 코드만 (폴더째 동결): run.py(회차 실행), records.py(기록 형식과 읽기),
                             freeze.py(동결 잠금), run_noinput.sh(무입력 실행·녹화), frametime_stats.py
   grading/                  채점: 채점표(sheets/), 채점표 생성기, 블라인드 묶음(blind.py), 채점 집계(collect.py)
-  analysis/                 결과 읽기: 시범 요약(summarize.py), 사전 등록 분석(analyze.py), 빌드 오류 분류(errors.py)
+  analysis/                 결과 읽기: 시범 요약(summarize.py), 사전 등록 분석(analyze.py), 빌드 오류 분류(errors.py),
+                            대표작(showcase.py), 무입력 녹화 장면 모음(contact_sheet.sh)
   tests/                    가짜 출력으로 하니스·채점·분석을 확인하는 테스트 (python3 tests/run_all.py)
   smoke/                    템플릿 점검용 프로그램
   runs/                     회차 결과 (사람마다 runs-*.jsonl, 회차별 폴더)
