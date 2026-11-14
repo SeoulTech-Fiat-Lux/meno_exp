@@ -667,7 +667,14 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
                 if proc.returncode != 0:
                     errors.append(f"{label} 종료 코드 {proc.returncode}: {proc.stderr.strip()[-500:]}")
                     break
-            noinput = json.loads(result_path.read_text()) if result_path.exists() else {}
+            noinput = {}
+            if result_path.exists():
+                raw = result_path.read_text()
+                try:
+                    noinput = json.loads(raw)
+                except json.JSONDecodeError as error:
+                    # 결과 파일이 깨져도 하니스를 멈추지 않는다 (멈추면 회차를 새로 받게 됨). 원문을 남긴다.
+                    errors.append(f"result.json을 읽지 못함 ({error}): {raw.strip()[:300]}")
             if errors:
                 noinput["harness_error"] = errors
 
