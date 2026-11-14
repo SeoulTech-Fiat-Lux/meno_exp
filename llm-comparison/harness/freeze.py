@@ -8,11 +8,11 @@
 채점표, 하니스(harness/ 폴더 전체). 본 실행(run.py --games main)은 잠금 파일이 없거나 입력이 잠금과 다르면 시작하지 않는다.
 
 일관성 검사:
-- 템플릿의 meno 커밋과 문맥 목록(manifest.json)의 meno 커밋이 같다 (빌드하는 코드와 LLM에게 주는 문서가 같은 버전).
-- 두 템플릿의 SFML 커밋이 manifest.json의 SFML/SFML 커밋과 같다 (두 조건이 같은 SFML로 빌드됨).
+- 템플릿의 meno 커밋과 문맥 목록(manifest.json)의 meno 커밋이 같다 (빌드하는 코드와 LLM에게 주는 문서가 같은 버전이어야 한다).
+- 두 템플릿의 SFML 커밋이 manifest.json의 SFML/SFML 커밋과 같다 (두 조건이 같은 SFML로 빌드되어야 한다).
 - 템플릿의 모든 GIT_TAG가 40자리 커밋 해시다.
-- 동결 전에 끝낼 일: specs/sim/ 시뮬레이션 스크립트(D8), 채점표 항목 문장이 지금 명세와 같음.
-- 문맥 묶음의 출처 머리글이 manifest.json의 저장소·커밋·파일 목록과 같다 (목록을 바꾸고 묶음을 다시 만들지 않은 경우를 잡음).
+- 동결 전에 끝낼 일을 마쳤다: specs/sim/ 시뮬레이션 스크립트(D8)가 있고, 채점표 항목 문장이 지금 명세와 같다.
+- 문맥 묶음의 출처 머리글이 manifest.json의 저장소·커밋·파일 목록과 같다 (목록을 바꾸고 묶음을 다시 만들지 않은 경우를 잡는다).
 - 모델마다 model(TBD 아님), 구독 CLI backend, effort가 정해져 있다.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ import tomllib
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I로 실행해도 records.py를 찾게
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I로 실행해도 records.py를 찾도록 한다
 import records  # noqa: E402
 
 LOCK = BASE / "freeze.lock.json"
@@ -89,7 +89,7 @@ SIM_SCRIPTS = {
 
 
 def prerequisite_problems(cfg: dict) -> list[str]:
-    """동결 전에 끝나 있어야 하는 일. 잠근 뒤에는 고치면 전부 다시 돌려야 하므로 일찍 잠그지 못하게 한다."""
+    """동결 전에 끝나 있어야 하는 일을 검사한다. 잠근 뒤에 고치면 전부 다시 돌려야 하므로, 너무 일찍 잠그지 못하게 한다."""
     problems = []
     used = [*cfg["games"]["main"], *cfg["games"].get("pilot", [])]
     missing = [SIM_SCRIPTS[g] for g in used if g in SIM_SCRIPTS and not (BASE / "specs" / "sim" / SIM_SCRIPTS[g]).exists()]

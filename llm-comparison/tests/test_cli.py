@@ -150,7 +150,7 @@ try:
 except llm.RunFailure as e:
     assert e.reason == "context_window"
 
-# CLI가 명령줄을 거부하면 (모르는 플래그·설정 키) 기다리거나 다시 보내지 않고 바로 멈춘다
+# CLI가 명령줄을 거부하면(모르는 플래그·설정 키) 기다리거나 다시 보내지 않고 바로 멈춘다
 def no_sleep(seconds):
     raise AssertionError("명령줄 오류에서 기다리면 안 됨")
 llm.time.sleep = no_sleep

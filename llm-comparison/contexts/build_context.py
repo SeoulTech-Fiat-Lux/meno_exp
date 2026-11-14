@@ -41,7 +41,7 @@ def main() -> None:
 
     bundle = "\n".join(parts)
     data = bundle.encode("utf-8")
-    # 바이트로 쓴다. write_text는 Windows에서 CRLF로 바꿔 써서, 같은 묶음이 OS마다 다른 sha256(동결 잠금)이 된다.
+    # 바이트로 쓴다. write_text는 Windows에서 줄바꿈을 CRLF로 바꿔 쓰므로, 같은 묶음이라도 OS마다 sha256(동결 잠금)이 달라진다.
     output.write_bytes(data)
     print(json.dumps({"condition": condition, "files": len(parts), "bytes": len(data),
                       "chars": len(bundle), "sha256": hashlib.sha256(data).hexdigest()}))

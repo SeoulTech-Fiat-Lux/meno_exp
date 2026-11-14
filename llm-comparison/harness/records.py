@@ -15,8 +15,8 @@
 
 형식 버전:
     1  첫 형식 (시범 실행 pilot-e1712ed0까지)
-    2  API(LiteLLM) 백엔드를 뺌: cost, model_params, prompt_cache, versions.litellm, rounds_detail[].refusal_text 삭제.
-       읽는 쪽이 기대는 필드는 그대로라 버전 1도 그대로 읽는다.
+    2  API(LiteLLM) 백엔드를 뺐다. cost, model_params, prompt_cache, versions.litellm, rounds_detail[].refusal_text를 지웠다.
+       읽는 쪽이 기대는 필드는 그대로이므로 버전 1도 그대로 읽는다.
 """
 from __future__ import annotations
 

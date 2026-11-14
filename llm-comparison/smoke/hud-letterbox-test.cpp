@@ -1,4 +1,4 @@
-// 레터박스 상태에서 HUD 위치 확인: resetCamera() vs 고정 UI 카메라
+// 레터박스 상태에서 HUD 위치를 확인한다: resetCamera()와 고정 UI 카메라 비교
 #include <meno/Meno.hpp>
 #include <optional>
 class T final : public meno::Application {

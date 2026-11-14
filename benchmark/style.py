@@ -1,6 +1,6 @@
-"""그림 색과 서식 (figures.py, tracy.py). matplotlib를 import하지 않으며, 서식은 apply()를 부를 때만 바뀐다.
+"""그림 색과 서식 (figures.py, tracy.py). 이 모듈은 matplotlib를 import하지 않으며, 서식은 apply()를 부를 때만 바뀐다.
 
-색은 dataviz 기본 팔레트(밝은 모드)다. 순서가 색각 이상 대비 구분을 보장하므로 바꾸지 않는다.
+색은 dataviz 기본 팔레트(밝은 모드)다. 이 순서가 색각 이상이 있어도 색이 구분되도록 보장하므로 바꾸지 않는다.
 """
 SURFACE = "#fcfcfb"
 INK = "#0b0b0b"

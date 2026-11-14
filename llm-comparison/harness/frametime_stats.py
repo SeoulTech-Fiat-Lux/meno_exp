@@ -2,7 +2,7 @@
 
 사용: python3 frametime_stats.py <run 출력 폴더> [건너뛸 프레임 수=60]
 
-덤프 파일(frametime/frametime_(ms))은 한 줄에 한 프레임의 시간(ms)이다. 창이 뜬 직후의 프레임은
+덤프 파일(frametime/frametime_(ms))에는 한 줄에 한 프레임의 시간(ms)이 적혀 있다. 창이 뜬 직후의 프레임은
 로딩이 섞이므로 앞쪽 일부를 버린다. 결과를 result.json에 덧붙이고 출력한다.
 """
 import json

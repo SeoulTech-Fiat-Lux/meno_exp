@@ -2,7 +2,7 @@
 
 사용 (llm-comparison/ 에서, 블라인드 묶음을 만드는 사람이):
     python3 grading/merge_runs.py runs/main ~/incoming/claude ~/incoming/chatgpt1 ~/incoming/chatgpt2
-    python3 grading/merge_runs.py runs/main --check     # 합친 뒤(또는 한 사람 폴더) 검사만
+    python3 grading/merge_runs.py runs/main --check     # 합친 뒤의 폴더(또는 한 사람의 폴더)를 검사만 한다
 
 각 원본 폴더는 한 사람이 보낸 runs/main 압축을 푼 것이다 (runs-*.jsonl, 회차 폴더, 실행 파일 game 포함).
 
@@ -34,7 +34,7 @@ def expected_run_ids(cfg: dict) -> set[str]:
 
 
 def check(sources: list[Path], cfg: dict) -> tuple[list[str], list[dict]]:
-    """(문제 목록, 모든 회차 기록). 각 기록에 _source(원본 폴더)를 붙인다."""
+    """(문제 목록, 모든 회차 기록)을 돌려준다. 각 기록에 _source(원본 폴더)를 붙인다."""
     problems, records = [], []
     for source in sources:
         for record in runlog.load_records(source, required=False):

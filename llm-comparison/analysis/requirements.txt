@@ -1,0 +1,2 @@
+# 그림(analysis/figures.py)에만 쓴다. 하니스·채점·분석 표는 표준 라이브러리만 쓴다. benchmark/와 같은 버전.
+matplotlib==3.10.7

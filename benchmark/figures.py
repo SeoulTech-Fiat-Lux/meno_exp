@@ -3,11 +3,11 @@
 사용: python3 figures.py <결과 폴더>      (summarize.py를 먼저 돌려 summary.csv가 있어야 한다)
 
 결과 폴더의 figures/에 쓴다.
-  1-budget.png        N에 따른 프레임 시간(평균, p99)과 60·30 fps 예산선. 예산을 넘는 N을 표시
+  1-budget.png        N에 따른 프레임 시간(평균, p99)과 60·30 fps 예산선. 예산을 넘는 N을 표시한다
   2-stages.png        meno-object 프레임 시간을 SFML 기본 / Renderer 단계 / 객체 단계로 나눈 비율
-  3-per-sprite.png    스프라이트 하나당 평균 비용(μs). 평평하면 개수 비례 비용이 주도
-  4-distribution.png  큰 N 두 개에서 프레임 시간 누적 분포. p99가 튀는 프레임 때문인지 전반적 느림인지
-  figures.md          그림에서 읽을 값(예산을 넘는 N, 단계 비율)을 표로. 그림을 못 보는 사람용
+  3-per-sprite.png    스프라이트 하나당 평균 비용(μs). 평평하면 개수에 비례하는 비용이 주도한다
+  4-distribution.png  큰 N 두 개에서의 프레임 시간 누적 분포. p99가 높은 원인이 튀는 프레임인지 전반적인 느림인지 본다
+  figures.md          그림에서 읽을 값(예산을 넘는 N, 단계 비율)을 정리한 표. 그림을 볼 수 없는 사람을 위한 것이다
 
 그림 글자는 영어다. WSL에 한글 글꼴이 없으면 글자가 깨지기 때문이다.
 """
@@ -50,7 +50,7 @@ def plain_ticks(ax, axis: str = "both") -> None:
     fmt = FuncFormatter(lambda v, _: f"{v:,.0f}" if v >= 1 else f"{v:g}")
     for a in ((ax.xaxis, ax.yaxis) if axis == "both" else ((ax.xaxis,) if axis == "x" else (ax.yaxis,))):
         if a.get_scale() == "log":
-            # 범위가 좁으면 10의 거듭제곱만으로는 눈금 글자가 한두 개뿐이라 2·5 단위(더 좁으면 1~9)도 붙인다.
+            # 범위가 좁으면 10의 거듭제곱만으로는 눈금 글자가 한두 개뿐이므로 2·5 단위(더 좁으면 1~9) 눈금에도 글자를 붙인다.
             lo, hi = sorted(a.get_view_interval())
             decades = math.log10(hi / lo)
             subs = (1.0,) if decades >= 2 else (1.0, 2.0, 5.0) if decades >= 0.8 else tuple(range(1, 10))
@@ -60,7 +60,7 @@ def plain_ticks(ax, axis: str = "both") -> None:
 
 
 def crossing(counts: list[int], values: list[float], limit: float) -> float | None:
-    """값이 처음 limit을 넘는 N을 log-log 보간으로 추정. 처음부터 넘으면 counts[0], 끝까지 안 넘으면 None."""
+    """값이 처음 limit을 넘는 N을 log-log 보간으로 추정한다. 처음부터 넘으면 counts[0]을, 끝까지 넘지 않으면 None을 돌려준다."""
     for i, (n, v) in enumerate(zip(counts, values)):
         if v >= limit:
             if i == 0:
@@ -211,7 +211,7 @@ def fig_distribution(out: Path, targets, counts, colors, notes: list[str]) -> No
                 continue
             values.sort()
             k = len(values)
-            # 초과 비율(그 시간보다 느린 프레임의 비율). 로그 축이라 드물게 튀는 프레임(꼬리)이 잘 보인다.
+            # 초과 비율(그 시간보다 느린 프레임의 비율)을 그린다. 로그 축이므로 드물게 튀는 프레임(꼬리)이 잘 보인다.
             ax.step(values, [(k - i - 1) / k if i < k - 1 else 1 / k for i in range(k)], where="post",
                     color=colors[t], label=t)
             p50, p99 = percentile(values, 0.50), percentile(values, 0.99)

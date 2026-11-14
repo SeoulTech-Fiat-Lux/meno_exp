@@ -1,8 +1,8 @@
 """LLM 호출: 구독 CLI 백엔드(Claude Code, Codex)와 mock, 연결 확인(probe).
 
-API 키 대신 각자의 구독 로그인으로 CLI를 부른다 (PLAN D13). 변수 통제를 위해 두 CLI 모두:
-  - 자체 시스템 프롬프트를 prompts/system.md로 바꾼다 (에이전트용 긴 지시문을 빼고 두 공급자에 같은 문장).
-  - 도구(파일 읽기·명령 실행·웹)를 끄고, 빈 임시 폴더에서 돌린다. 모델이 직접 컴파일해 보는 일이 없게.
+API 키 대신 각자의 구독 로그인으로 CLI를 부른다 (PLAN D13). 변수를 통제하기 위해 두 CLI 모두 다음과 같이 돌린다:
+  - 자체 시스템 프롬프트를 prompts/system.md로 바꾼다 (에이전트용 긴 지시문을 빼고, 두 공급자에 같은 문장을 준다).
+  - 도구(파일 읽기·명령 실행·웹)를 끄고, 빈 임시 폴더에서 돌린다. 모델이 직접 컴파일해 볼 수 없게 하려는 것이다.
   - 사용자 설정(CLAUDE.md, AGENTS.md, 플러그인, MCP)을 읽지 않는다.
   - 왕복은 CLI의 세션 이어 가기로 같은 대화에 붙인다.
 
@@ -38,9 +38,9 @@ class Reply:
     cache_write_tokens: int | None = None     # 그중 캐시에 새로 쓴 입력 토큰 (Claude)
     reasoning_tokens: int | None = None       # 출력 토큰 중 추론 토큰
     finish_reason: str | None = None          # stop, length(잘림), refusal. 알 수 없으면 None
-    refused: bool = False                     # 공급자가 거부라고 알려 준 답
+    refused: bool = False                     # 공급자가 거부했다고 알려 준 답
     latency_s: float = 0.0
-    extra: dict = field(default_factory=dict)  # 회차 기록의 왕복 항목에 그대로 들어감 (CLI 버전, 세션 등)
+    extra: dict = field(default_factory=dict)  # 회차 기록의 왕복 항목에 그대로 들어간다 (CLI 버전, 세션 등)
 
 
 class RunFailure(Exception):
@@ -53,7 +53,7 @@ class RunFailure(Exception):
 
 
 class UsageLimitReached(Exception):
-    """구독 사용 한도에 걸려 기다리는 시간 상한을 넘김. 하니스를 멈추고 나중에 이어서 돌린다."""
+    """구독 사용 한도에 걸려 기다린 시간이 상한을 넘었다. 하니스를 멈추고 나중에 이어서 돌린다."""
 
 
 CODE_BLOCK = re.compile(r"```(?:cpp|c\+\+|cc|cxx)[^\n]*\n(.*?)```", re.S)
@@ -67,7 +67,7 @@ def extract_code(text: str) -> tuple[str | None, int]:
 
 
 def first_line(command: list[str]) -> str | None:
-    """명령의 출력 첫 줄 (버전 기록용). 실패하면 None."""
+    """명령 출력의 첫 줄을 돌려준다(버전 기록용). 실패하면 None을 돌려준다."""
     try:
         return subprocess.run(command, capture_output=True, text=True, check=True).stdout.splitlines()[0].strip()
     except Exception:
@@ -125,7 +125,7 @@ class CliBackend:
     def session(self, run: Run, messages: list[dict]) -> tuple[str, str | None, str]:
         """(작업 폴더, 이어 갈 세션 ID 또는 None, 이번에 보낼 user 메시지)."""
         if len(messages) == 1 or run.run_id not in self.sessions:
-            # 회차마다 빈 폴더에서 시작한다. 프로젝트 지시문(CLAUDE.md, AGENTS.md)이나 소스 파일이 없게.
+            # 회차마다 빈 폴더에서 시작해, 프로젝트 지시문(CLAUDE.md, AGENTS.md)이나 소스 파일이 끼어들지 않게 한다.
             return tempfile.mkdtemp(prefix=f"meno-exp-{run.run_id}-"), None, messages[0]["content"]
         cwd, session_id = self.sessions[run.run_id]
         return cwd, session_id, messages[-1]["content"]
@@ -138,10 +138,10 @@ class CliBackend:
         return False
 
     def call(self, command: list[str], prompt: str, cwd: str, env: dict | None = None):
-        """CLI를 한 번 부른다. 프롬프트는 stdin으로 준다 (225KB라 명령줄 인자 한도를 넘음).
-        돌려줌: (프로세스, 경과 초, 재시도 횟수).
-        문맥 창 초과는 RunFailure, 사용 한도는 기다렸다 같은 왕복을 다시 보냄, 로그인·명령줄 문제는 바로 멈춤,
-        그 밖의 오류(서버 오류, 시간 초과)는 api_retries번까지 다시 보냄."""
+        """CLI를 한 번 부르고 (프로세스, 경과 초, 재시도 횟수)를 돌려준다.
+        프롬프트는 225KB로 명령줄 인자 한도를 넘으므로 stdin으로 준다.
+        문맥 창 초과는 RunFailure를 던지고, 사용 한도에 걸리면 기다렸다가 같은 왕복을 다시 보내며, 로그인·명령줄 문제는
+        바로 멈춘다. 그 밖의 오류(서버 오류, 시간 초과)는 api_retries번까지 다시 보낸다."""
         exp = self.cfg["experiment"]
         wait_limit = exp.get("limit_wait_minutes", 30) * 60
         give_up_at = time.monotonic() + exp.get("limit_wait_hours", 6) * 3600
@@ -216,13 +216,13 @@ class ClaudeCLI(CliBackend):
         if unanswered is not None and len(messages) > 1:
             prompt = unanswered + "\n\n" + messages[-1]["content"]
         command = [self.exe, "-p", "--output-format", "json",
-                   "--safe-mode",                  # CLAUDE.md, 스킬, 플러그인, 훅, MCP, 출력 스타일을 끔. 구독 로그인은 그대로
-                   "--tools", "",                  # 도구 모두 끔
+                   "--safe-mode",                  # CLAUDE.md, 스킬, 플러그인, 훅, MCP, 출력 스타일을 끈다. 구독 로그인은 유지된다
+                   "--tools", "",                  # 도구를 모두 끈다
                    "--strict-mcp-config", "--disable-slash-commands",
                    "--system-prompt", self.system_prompt,
                    "--model", run.model["model"], "--effort", run.model["effort"]]
         if resume:
-            # 마지막으로 성공한 세션에서 갈라져 나온다. 실패한 호출을 다시 보내도 대화에 같은 메시지가 겹치지 않게.
+            # 마지막으로 성공한 세션에서 갈라져 나오므로, 실패한 호출을 다시 보내도 대화에 같은 메시지가 겹치지 않는다.
             command += ["--resume", resume, "--fork-session"]
         env = os.environ | {"CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(exp["max_output_tokens"])}
         env.pop("ANTHROPIC_API_KEY", None)  # 키가 있으면 구독 대신 API로 과금될 수 있다
@@ -234,7 +234,7 @@ class ClaudeCLI(CliBackend):
         continued = not limit_error and (data.get("num_turns") or 1) > 1
         truncated = limit_error or continued
         if truncated:
-            # 세션은 앞의 성공 지점에 그대로 둔다 (첫 왕복이면 세션이 없어 다음에 새로 시작).
+            # 세션은 앞의 성공 지점에 그대로 둔다 (첫 왕복이면 세션이 없으므로 다음 호출에서 새로 시작한다).
             self.unanswered[run.run_id] = prompt
             if resume is None:
                 self.sessions.pop(run.run_id, None)
@@ -255,7 +255,7 @@ class ClaudeCLI(CliBackend):
             finish_reason=self.STOP.get(stop, stop), refused=stop == "refusal",
             latency_s=elapsed,
             extra={"client": self.client, "client_version": self.version, "session_id": data["session_id"],
-                   # 구독이라 과금되지 않는다. API로 샀다면 얼마였는지 (참고용)
+                   # 구독이므로 과금되지 않는다. API로 썼다면 들었을 비용이다 (참고용)
                    "cost_equiv_usd": data.get("total_cost_usd"), "cli_retries": retries,
                    "num_turns": data.get("num_turns")}
                   | ({"output_limit_error": data.get("result", "")[:300]} if limit_error else {})
@@ -268,10 +268,10 @@ class ClaudeCLI(CliBackend):
 class CodexCLI(CliBackend):
     """Codex CLI의 exec 모드. ChatGPT 구독 로그인을 쓴다.
 
-    문서로만 맞춘 부분이 있다 (첫 --probe로 확인): --ignore-user-config, features.shell_tool,
+    문서만 보고 맞춘 부분이 있다(첫 --probe로 확인한다): --ignore-user-config, features.shell_tool,
     model_instructions_file, 그리고 exec 옵션을 resume 앞에 두는 순서. 맞지 않으면 call()이 CLI 출력과 함께 바로 멈춘다.
-    Claude와 다른 점 (보고서 한계에 적음):
-      - 갈라져 나오는 이어 가기가 없어, 실패한 호출을 다시 보내면 대화에 같은 메시지가 겹칠 수 있다 (cli_retries로 남음).
+    Claude와 다른 점 (보고서의 한계 절에 적는다):
+      - 갈라져 나오는 이어 가기를 지원하지 않아, 실패한 호출을 다시 보내면 대화에 같은 메시지가 겹칠 수 있다 (cli_retries에 남는다).
       - 종료 사유를 알려 주지 않아, 잘린 답은 닫히지 않은 코드 블록 때문에 형식 오류로 집계된다.
       - 응답 모델 ID를 알려 주지 않아, 요청한 모델 이름과 CLI 버전을 기록한다.
     """
@@ -295,8 +295,8 @@ class CodexCLI(CliBackend):
                 "-m", run.model["model"],
                 "-c", "approval_policy=" + toml_string("never"),
                 "-c", "web_search=" + toml_string("disabled"),
-                "-c", "features.shell_tool=false",                                       # 명령 실행 도구를 끔
-                "-c", "model_instructions_file=" + toml_string(str(self.instructions)),  # 기본 지시문 대체
+                "-c", "features.shell_tool=false",                                       # 명령 실행 도구를 끈다
+                "-c", "model_instructions_file=" + toml_string(str(self.instructions)),  # 기본 지시문을 바꾼다
                 "-c", "model_reasoning_effort=" + toml_string(run.model["effort"])]
 
     @staticmethod
@@ -327,7 +327,7 @@ class CodexCLI(CliBackend):
         command = [self.exe, "exec", *self.flags(run)]
         if resume:
             command += ["resume", resume]
-        command.append("-")  # 프롬프트는 stdin
+        command.append("-")  # 프롬프트는 stdin으로 준다
         proc, elapsed, retries = self.call(command, prompt, cwd)
         events = self.events(proc)
         thread = next((e.get("thread_id") for e in events if e.get("type") == "thread.started"), None) or resume

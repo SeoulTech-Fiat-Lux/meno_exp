@@ -1,12 +1,13 @@
 """Tracy 병목 분석 (SeoulTech-Fiat-Lux/Meno#30, B3).
 
-측정(run.py)과 따로, Tracy를 켠 빌드로 meno-object를 캡처하고 구간(zone)별 비용을 표·그림으로 낸다.
-Tracy를 켠 빌드의 수치는 측정 표에 쓰지 않는다(계측 비용이 섞임).
+측정(run.py)과 따로, Tracy를 켠 bench_app 빌드(BENCH_ENABLE_TRACY)로 meno-object를 캡처하고 구간(zone)별
+비용을 표·그림으로 낸다. Meno 코드는 고치지 않으므로, bench_app이 Game::run()이 하는 일을 공개 API로 같은
+순서로 직접 부르고(--loop direct) 호출 사이에 구간을 넣는다. Tracy를 켠 빌드의 수치는 측정 표에 쓰지 않는다.
 
 사용 (benchmark/ 에서):
     python3 tracy.py tools                          # bench.toml의 Tracy 버전으로 tracy-capture, tracy-csvexport 빌드
-    python3 tracy.py capture --meno ~/Meno          # Tracy 빌드 → N마다 캡처 → CSV로 내보내기 → 보고서
-    python3 tracy.py capture --meno ~/Meno --bin <Tracy를 켠 실행 파일>
+    python3 tracy.py capture                        # Tracy 빌드 → N마다 캡처 → CSV로 내보내기 → 보고서
+    python3 tracy.py capture --bin <Tracy를 켠 실행 파일>
     python3 tracy.py report <tracy 폴더>            # 내보낸 CSV로 보고서만 다시 만들기
     python3 tracy.py capture --mock                 # Tracy 없이 보고서 흐름 점검 (results-mock/)
 
@@ -14,7 +15,7 @@ Tracy를 켠 빌드의 수치는 측정 표에 쓰지 않는다(계측 비용이
     <대상>-<N>.tracy          캡처 원본. 크므로 커밋하지 않는다(.gitignore). Tracy 프로그램으로 연다
     zones-<N>.csv             구간 호출마다 한 줄, self time (tracy-csvexport -u -e)
     frames-<N>.csv            "frame" 구간 호출마다 한 줄, 포함 시간 (tracy-csvexport -u -f frame)
-    zones.md, zones.png       프레임당 구간별 비용 표와 그림 (자동, 다시 만들어짐)
+    zones.md, zones.png       프레임당 구간별 비용 표와 그림 (자동 생성, 실행할 때마다 다시 만든다)
     notes.md                  사람이 쓰는 분석. 없을 때만 양식을 만든다(덮어쓰지 않음)
 """
 from __future__ import annotations
@@ -30,7 +31,7 @@ import time
 from pathlib import Path
 
 import style
-from common import HERE, check_renderer, cmake_build, git_info, gl_info, load_config, run_env
+from common import HERE, build_bench, check_renderer, cmake_build, gl_info, load_config, pinned_meno, run_env
 
 
 def tool_dir(version: str) -> Path:
@@ -47,7 +48,7 @@ def build_tools(cfg: dict) -> Path:
     if not src.exists():
         subprocess.run(["git", "clone", "--depth", "1", "--branch", version, cfg["repo"], str(src)], check=True)
     for name in ("capture", "csvexport"):
-        # 캡처 도구는 GUI가 필요 없다. NO_ISA_EXTENSIONS: 다른 PC로 옮겨도 돌게 한다.
+        # 캡처 도구는 GUI가 필요 없다. NO_ISA_EXTENSIONS는 다른 PC로 옮겨도 실행되게 한다.
         cmake_build(src / name, out / f"build-{name}", ["-DCMAKE_BUILD_TYPE=Release", "-DNO_ISA_EXTENSIONS=ON"],
                     os.cpu_count() or 4)
     (out / "bin").mkdir(exist_ok=True)
@@ -58,7 +59,7 @@ def build_tools(cfg: dict) -> Path:
     return out / "bin"
 
 
-FRAME_ZONE = "frame"  # 실행 파일이 프레임 하나를 통째로 감싸는 구간 이름 (README의 "Meno 쪽에서 맞출 것")
+FRAME_ZONE = "frame"  # 실행 파일이 프레임 하나를 통째로 감싸는 구간 이름 (README의 "Meno 쪽에서 맞출 것" 참고)
 
 
 def export(bin_dir: Path, trace: Path, out: Path, n: int) -> None:
@@ -78,7 +79,7 @@ def capture_one(bin_dir: Path, binary: Path, run_cfg: dict, tcfg: dict, env: dic
     time.sleep(0.5)
     csv_out = out / f".frames-{n}.csv"  # 실행 파일 약속상 필요하지만 Tracy 빌드의 수치는 쓰지 않는다
     cmd = [a.format(bin=binary, target=tcfg["target"], count=n, seed=1, warmup=tcfg["warmup_frames"],
-                    frames=tcfg["frames"], out=csv_out) for a in run_cfg["command"]]
+                    frames=tcfg["frames"], out=csv_out) for a in run_cfg["command"]] + tcfg.get("extra_args", [])
     # TRACY_NO_EXIT=1: 프로그램이 끝나도 캡처 도구가 데이터를 다 받을 때까지 기다린다.
     p = subprocess.run(cmd, env=env | {"TRACY_NO_EXIT": "1"}, capture_output=True, text=True,
                        timeout=run_cfg["timeout_s"])
@@ -106,9 +107,9 @@ def mock_capture(tcfg: dict, out: Path, n: int) -> None:
                     "bench.move": 0.08 * n, "window.display": 300 + 0.02 * n, "input.poll": 15, "audio.update": 8,
                     "resources.lookup": 0.01 * n}
     zones, frames, t = [UNWRAP_HEADER], [UNWRAP_HEADER], 0
-    for f in range(tcfg["warmup_frames"] + tcfg["frames"]):
+    for f in range(tcfg["warmup_frames"] + tcfg["frames"] + 1):  # bench_app처럼 시작 프레임 하나를 더 돈다
         start = t
-        slow = 30 if f == 0 else 1  # 첫 프레임은 창 생성·연결로 길다. 워밍업에서 잘려야 한다
+        slow = 30 if f == 0 else 1  # 첫 프레임은 창 생성·연결 때문에 길다. 워밍업에서 잘려야 한다
         for name, us in per_frame_us.items():
             d = int(us * 1000 * rng.uniform(0.9, 1.1) * slow)
             zones.append(f"{name},src/mock.cpp,1,{t},{d},1,")
@@ -129,13 +130,14 @@ def read_unwrap(path: Path) -> list[tuple[str, int, int]]:
 def load_capture(out: Path, n: int, warmup: int) -> tuple[float, dict[str, float], int]:
     """기록 프레임만으로 (프레임 평균 ms, 구간별 프레임당 self ms, 프레임 수)를 낸다.
 
-    앞쪽 warmup개의 frame 호출은 버리고, 남은 frame 호출이 덮는 시간 안에서 시작한 구간 호출만 센다.
+    앞쪽 warmup + 1개의 frame 호출은 버리고(bench_app은 첫 프레임에서 시각만 찍고, 그다음 warmup개를 버린다), 남은 frame 호출이 덮는 시간 안에서 시작한 구간 호출만 센다.
     frame 구간의 self time은 프레임 안에서 다른 구간에 속하지 않은 시간, 곧 계측되지 않은 시간이다."""
     frames = sorted((s, d) for name, s, d in read_unwrap(out / f"frames-{n}.csv") if name == FRAME_ZONE)
-    if len(frames) <= warmup:
+    skip = warmup + 1
+    if len(frames) <= skip:
         raise ValueError(f"frames-{n}.csv에 '{FRAME_ZONE}' 구간이 {len(frames)}개뿐이다(워밍업 {warmup}개). "
                          f"실행 파일이 프레임마다 MENO_PROFILE_SCOPE(\"{FRAME_ZONE}\")로 감싸는지 확인한다")
-    kept = frames[warmup:]
+    kept = frames[skip:]
     lo, hi = kept[0][0], kept[-1][0] + kept[-1][1]
     frame_ms = sum(d for _, d in kept) / len(kept) / 1e6
     zones: dict[str, float] = {}
@@ -151,7 +153,7 @@ def report(out: Path, tcfg: dict) -> None:
     if not counts:
         sys.exit(f"{out}에 zones-*.csv가 없다")
     data = {n: load_capture(out, n, tcfg["warmup_frames"]) for n in counts}
-    # 가장 큰 N에서 비싼 구간부터 이름을 붙이고, 나머지는 other로 묶는다. 순서를 N마다 바꾸지 않아 색이 고정된다.
+    # 가장 큰 N에서 비싼 구간부터 이름을 붙이고, 나머지는 other로 묶는다. 순서를 N마다 바꾸지 않으므로 구간의 색이 고정된다.
     ranked = sorted((z for z in data[counts[-1]][1] if z != FRAME_ZONE), key=lambda z: -data[counts[-1]][1][z])
     named = ranked[:top]
     stacks = {}
@@ -207,7 +209,7 @@ def figure(out: Path, counts: list[int], stacks: dict, labels: list[str]) -> Non
     except ImportError:
         print("matplotlib가 없어 그림은 건너뜀 (pip install -r requirements.txt)")
         return
-    # 구간 색: 이름 붙은 구간은 팔레트 순서대로, 묶음 둘은 회색 계열로 낮춘다. 막대가 N마다 하나라 이웃한 칸만 구분되면 된다.
+    # 구간 색: 이름 붙은 구간은 팔레트 순서대로 칠하고, 묶음 둘은 회색 계열로 낮춘다. 막대가 N마다 하나이므로 이웃한 칸만 구분되면 된다.
     style.apply(plt)
     colors = {z: style.SERIES[i % len(style.SERIES)] for i, z in enumerate(labels[:-2])}
     colors |= {"other zones": style.MUTED[0], "not instrumented": style.MUTED[1]}
@@ -276,7 +278,6 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("tools", help="Tracy 캡처 도구 빌드")
     c = sub.add_parser("capture", help="캡처하고 보고서 만들기")
-    c.add_argument("--meno", type=Path)
     c.add_argument("--bin", type=Path, help="Tracy를 켜고 빌드한 실행 파일. 주면 빌드하지 않는다")
     c.add_argument("--out", type=Path, help="기본 results/<날짜>-<meno 커밋>/tracy")
     c.add_argument("--mock", action="store_true")
@@ -296,10 +297,7 @@ def main() -> None:
         report(args.dir, tcfg)
         return
 
-    if not args.mock and not args.meno:
-        ap.error("--meno가 필요하다 (흐름 점검만 하려면 --mock)")
-    meno = args.meno.expanduser().resolve() if args.meno else None
-    commit = git_info(meno)["commit"][:7] if meno else "mock"
+    commit = "mock" if args.mock else pinned_meno()[:7]
     out = args.out or HERE / ("results-mock" if args.mock else "results") / f"{dt.date.today():%Y%m%d}-{commit}" / "tracy"
     out.mkdir(parents=True, exist_ok=True)
     if args.mock:
@@ -311,9 +309,7 @@ def main() -> None:
         bin_dir = build_tools(tcfg)
         binary = args.bin
         if not binary:
-            build_dir = HERE / "work" / f"build-tracy-{commit}"
-            cmake_build(meno, build_dir, tcfg["cmake_args"], cfg["build"]["jobs"])
-            binary = build_dir / cfg["build"]["binary"]
+            binary = build_bench(HERE / "work" / "build-tracy", tcfg["cmake_args"], cfg["build"]["jobs"])
         for n in tcfg["counts"]:
             capture_one(bin_dir, Path(binary), cfg["run"], tcfg, env, out, n)
     report(out, tcfg)

@@ -7,11 +7,11 @@
 
 출력 폴더:
     <ID>/game, <ID>/assets(공용 에셋 링크)   채점자는 `cd <ID> && ./game`으로 실행한다
-    <ID>/sheet-<채점자>.csv                 배정된 채점자마다 따로 쓰는 채점표 (같은 파일을 덮어쓰지 않게)
-    <ID>/meta-<채점자>.csv                  어느 조건 같은지 추측, 확신, 채점에 쓴 시간 (블라인드 점검·부담 측정)
+    <ID>/sheet-<채점자>.csv                 배정된 채점자마다 따로 쓰는 채점표 (서로 같은 파일을 덮어쓰지 않도록)
+    <ID>/meta-<채점자>.csv                  조건 추측과 확신 정도, 채점에 쓴 시간 (블라인드 점검·부담 측정용)
     assignments.csv                         ID별 채점자 배정표 (조건·모델 정보 없음)
 창 제목으로 게임은 알 수 있지만, 조건과 모델은 대응표에만 있다.
-대응표는 채점이 끝날 때까지 아무도 열지 않는다. 저장소 안 경로는 거부한다. 채점이 끝나면 grading/mapping.csv로 커밋한다.
+대응표는 채점이 끝날 때까지 아무도 열지 않으며, 저장소 안의 경로는 받지 않는다. 채점이 끝나면 grading/mapping.csv로 커밋한다.
 """
 import argparse
 import csv
@@ -51,7 +51,7 @@ def main() -> None:
     if not shared_assets.exists():
         shutil.copytree(BASE / "assets", shared_assets)
 
-    # 사람마다 기록 파일이 따로 있다 (runs.jsonl, runs-<모델>-<몫>.jsonl). 모두 모은다. 형식은 harness/records.py
+    # 기록 파일은 사람마다 따로 있으므로(runs.jsonl, runs-<모델>-<몫>.jsonl) 모두 모은다. 형식은 harness/records.py에 있다.
     records = [r for r in runlog.load_records(args.runs_dir) if r["build_success"] and (args.runs_dir / r["run_id"] / "game").exists()]
     # 채점자 조합을 돌려 가며 배정해 부담을 고르게 한다. 순서도 무작위로 섞는다.
     pairs = itertools.cycle(itertools.combinations(graders, args.per_run))

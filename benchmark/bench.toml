@@ -1,28 +1,21 @@
-# 성능 측정 설정 (SeoulTech-Fiat-Lux/Meno#30). 측정 코드는 Meno 저장소의 benchmarks/에 있고,
-# 이 저장소는 그 실행 파일을 돌리고 결과를 기록·요약한다. 형식 약속은 benchmark/README.md의 "실행 파일 약속".
+# 성능 측정 설정 (SeoulTech-Fiat-Lux/Meno#30). 측정 프로그램은 이 저장소의 bench_app/이다. 동결한 meno(46f8934)를
+# FetchContent로 받아 공개 API로만 재므로 Meno 저장소는 고치지 않는다. 형식 약속은 README의 "실행 파일 약속"을 따른다.
 
 [build]
-# Meno 저장소를 Release로 빌드할 때 넘기는 CMake 옵션. 기본 OFF인 벤치마크만 켠다.
-cmake_args = [
-    "-DCMAKE_BUILD_TYPE=Release",
-    "-DMENO_BUILD_BENCHMARKS=ON",
-    "-DMENO_BUILD_EXAMPLES=OFF",
-    "-DMENO_BUILD_TESTS=OFF",
-]
+# bench_app을 빌드할 때 넘기는 CMake 옵션. meno·SFML·Tracy 버전은 bench_app/CMakeLists.txt에 커밋 해시로 고정돼 있다.
+cmake_args = ["-DCMAKE_BUILD_TYPE=Release"]
 jobs = 4
-# 빌드 폴더 안에서 실행 파일의 상대 경로. Meno 쪽에서 이름이 정해지면 고친다.
-binary = "benchmarks/meno_bench"
 
 [sweep]
 # 200·400은 D4에서 넘겨받은 "적 200·400마리" 상황을 그대로 재려고 넣었다.
 counts = [100, 200, 400, 1000, 2000, 5000, 10000]
-# B1: SFML 직접 → meno Renderer → meno GameObject·Sprite 순으로 비용이 어디서 붙는지 단계별로 본다.
-# 첫 값이 기준이다. 요약 표의 비는 모두 이 대상에 대한 값이다.
+# B1: SFML 직접 사용 → meno Renderer → meno GameObject·Sprite 순으로, 단계마다 비용이 얼마나 붙는지 본다.
+# 첫 대상이 기준이며, 요약 표의 비는 모두 이 대상에 대한 값이다.
 targets = ["sfml", "meno-renderer", "meno-object"]
 reps = 5                     # (대상, N)마다 프로세스를 새로 띄워 반복한다
-warmup_frames = 120          # 창 생성·텍스처 업로드가 섞이는 앞쪽 프레임. 실행 파일이 버리고 기록하지 않는다
+warmup_frames = 120          # 창 생성·텍스처 업로드가 섞이는 앞쪽 프레임. 실행 파일은 이 프레임을 버리고 기록하지 않는다
 frames = 1000                # 기록할 프레임 수
-order = "interleaved"        # interleaved: 반복마다 모든 (대상, N)을 섞인 순서로 한 바퀴. 발열·클럭 변화가 한쪽에 몰리지 않게
+order = "interleaved"        # interleaved: 반복마다 모든 (대상, N)을 섞은 순서로 한 바퀴 돈다. 발열·클럭 변화가 한쪽에 몰리지 않게 하려는 것이다
 
 [run]
 # 실행 파일 명령. {bin} {target} {count} {warmup} {frames} {out} {seed}를 채운다.
@@ -33,19 +26,16 @@ timeout_s = 300
 env = { vblank_mode = "0", __GL_SYNC_TO_VBLANK = "0" }
 
 [tracy]
-# 병목 분석(B3). 측정 수치와 섞지 않도록 따로 빌드하고 따로 돌린다. 자세한 약속은 README의 "Tracy 병목 분석".
-# Tracy는 계측되는 쪽(Meno의 FetchContent 태그)과 캡처 도구의 버전이 같아야 연결된다. Meno 쪽도 이 태그로 고정한다.
+# 병목 분석(B3). 측정 수치와 섞지 않도록 따로 빌드하고 따로 돌린다. 자세한 약속은 README의 "Tracy 병목 분석"을 참고한다.
+# Tracy는 계측되는 쪽(bench_app/CMakeLists.txt의 FetchContent)과 캡처 도구의 버전이 같아야 연결된다.
 version = "v0.15.0"
 repo = "https://github.com/wolfpld/tracy.git"
-cmake_args = [
-    "-DCMAKE_BUILD_TYPE=Release",
-    "-DMENO_BUILD_BENCHMARKS=ON",
-    "-DMENO_ENABLE_TRACY=ON",
-    "-DMENO_BUILD_EXAMPLES=OFF",
-    "-DMENO_BUILD_TESTS=OFF",
-]
+cmake_args = ["-DCMAKE_BUILD_TYPE=Release", "-DBENCH_ENABLE_TRACY=ON"]
+# Game::run() 대신 같은 순서의 공개 API 호출로 루프를 돌려 호출 사이에 구간을 넣는다(Meno를 고치지 않으려고).
+# 이 루프의 프레임 시간은 game.run()과 같다: N=1000에서 +1.4%, N=10000에서 +0.4% (2026-11-14, 3회 중앙값, 반복 사이 차이 안).
+extra_args = ["--loop", "direct"]
 target = "meno-object"       # 사용자가 실제로 쓰는 경로
 counts = [1000, 10000]
 warmup_frames = 120
-frames = 600                 # 캡처 파일 크기를 줄이려고 측정(1000)보다 짧게
+frames = 600                 # 캡처 파일 크기를 줄이려고 측정(1000)보다 짧게 잡는다
 top_zones = 6                # 그림에 이름을 붙여 보일 구간 수. 나머지는 "other"로 묶는다

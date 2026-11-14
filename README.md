@@ -26,7 +26,7 @@ llm-comparison/
                             frametime_stats.py
   grading/                  채점: 채점표(sheets/), 채점표 생성기, 블라인드 묶음(blind.py), 채점 집계(collect.py)
   analysis/                 결과 읽기: 시범 요약(summarize.py), 사전 등록 분석(analyze.py), 빌드 오류 분류(errors.py),
-                            대표작(showcase.py), 무입력 녹화 장면 모음(contact_sheet.sh)
+                            그림(figures.py, matplotlib), 대표작(showcase.py), 무입력 녹화 장면 모음(contact_sheet.sh)
   tests/                    가짜 출력으로 하니스·채점·분석을 확인하는 테스트 (python3 tests/run_all.py)
   smoke/                    템플릿 점검용 프로그램
   runs/                     회차 결과 (사람마다 runs-*.jsonl, 회차별 폴더)
@@ -201,6 +201,16 @@ python3 analysis/analyze.py runs/main grading/results/run_scores.csv analysis/re
 
 ```bash
 python3 analysis/analyze.py runs/pilot-<입력 해시> - analysis/pilot
+```
+
+그림은 같은 계산으로 그린다(`analysis/figures/`: 셀별 1차 지표, 효과 크기와 신뢰구간, 빌드 오류 유형). 그림에만 matplotlib이 필요하다. 채점 전에는 통과율 그림을 만들지 않는다.
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r analysis/requirements.txt
+```
+
+```bash
+.venv/bin/python analysis/figures.py runs/main grading/results/run_scores.csv analysis/results
 ```
 
 대표작은 게임·조건마다 하나를 고르고(규칙은 PLAN 2.4절), 바로 실행할 수 있는 폴더를 만든다.

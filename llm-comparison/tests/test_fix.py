@@ -27,7 +27,7 @@ bad = 'FetchContent_Declare(\n SFML\n GIT_REPOSITORY x\n GIT_TAG 3.1.0\n GIT_SHA
 assert freeze.declared_tags(bad) == {"SFML": "3.1.0"} and not freeze.COMMIT.match("3.1.0")
 assert "requirements.txt" not in freeze.FROZEN
 
-# 프레임 덤프가 없어도 통계가 멈추지 않음
+# 프레임 덤프가 없어도 통계가 멈추지 않는다
 d = Path(tempfile.mkdtemp()); (d / "result.json").write_text('{"exit_code": 1}')
 p = subprocess.run([sys.executable, "-I", str(H / "frametime_stats.py"), str(d)], capture_output=True, text=True)
 assert p.returncode == 0, p.stderr
@@ -67,18 +67,18 @@ out = Path(tempfile.mkdtemp())
 M = {"id": "codex-cli/gpt-x", "tier": "other-vendor", "backend": "codex-cli", "model": "gpt-x", "effort": "medium"}
 R = lambda game, cond, rep: records.Run(M, game, cond, rep)
 
-# 문맥 창 초과는 둘째 왕복에서 회차 실패로 기록 (하니스는 계속)
+# 둘째 왕복에서 문맥 창을 넘으면 회차를 실패로 기록하고, 하니스는 계속 돈다
 fake = Scripted(reply(BAD), llm.RunFailure("context_window", "prompt is too long"))
 res = run.run_once(cfg, R("02-snake", "sfml", 1), fake, out, True, CTX)
 assert res["failure"] == "context_window" and res["rounds"] == 2 and res["rounds_detail"][1]["api_failure"] == "context_window", res
 assert "too long" in res["failure_detail"] and res["attempt"] == 1
-assert "expected ')'" in fake.seen[1]  # 둘째 왕복에는 빌드 오류 피드백이 감
+assert "expected ')'" in fake.seen[1]  # 둘째 왕복에는 빌드 오류 피드백이 들어간다
 
-# 공급자 거부는 바로 실패
+# 공급자가 거부하면 바로 실패로 끝난다
 res = run.run_once(cfg, R("02-snake", "sfml", 2), Scripted(reply("", finish_reason="refusal", refused=True)), out, True, CTX)
 assert res["failure"] == "refused" and res["rounds"] == 1 and res["rounds_detail"][0]["refused"], res
 
-# 코드 없는 답은 형식 오류 안내, 잘린 답은 잘림 안내를 보내고 왕복으로 셈
+# 코드가 없는 답에는 형식 오류 안내를, 잘린 답에는 잘림 안내를 보내고 둘 다 왕복으로 센다
 fake = Scripted(reply("설명만"), reply("```cpp\nint", finish_reason="length"), reply(GOOD))
 res = run.run_once(cfg, R("02-snake", "meno", 1), fake, out, True, CTX)
 assert res["build_success"] and res["rounds"] == 3 and res["truncated_rounds"] == 1, res
@@ -88,7 +88,7 @@ assert fake.seen[1] == run.prompt_file("format_error.md") and fake.seen[2] == ru
 res = run.run_once(cfg, R("02-snake", "meno", 2), Scripted(*[reply("x")] * cfg["experiment"]["max_rounds"]), out, True, CTX)
 assert res["failure"] == "rounds_exhausted" and res["rounds"] == cfg["experiment"]["max_rounds"]
 
-# 그 밖의 예외는 하니스를 멈추고(기록 없음), 폴더가 남는다
+# 그 밖의 예외는 하니스를 멈추며(기록하지 않음), 회차 폴더는 남는다
 try:
     run.run_once(cfg, R("02-snake", "sfml", 3), Scripted(RuntimeError("codex 오류가 계속됨")), out, True, CTX)
     raise AssertionError("멈춰야 함")
@@ -96,7 +96,7 @@ except RuntimeError:
     pass
 assert (out / R("02-snake", "sfml", 3).run_id / "prompt.md").exists()
 
-# 이어서 돌리면 끊긴 폴더를 옮기고 attempt 2로 기록. 무입력 실행이 실패해도 기록하고 계속
+# 이어서 돌리면 끊긴 폴더를 옮기고 attempt 2로 기록한다. 무입력 실행이 실패해도 기록하고 계속 돈다
 real_run = subprocess.run
 def fake_sub(cmd, **kw):
     if "run_noinput.sh" in cmd[0]:
@@ -109,7 +109,7 @@ assert res["attempt"] == 2 and res["interrupted_attempts"] == [f"{run_id}.interr
 assert (out / f"{run_id}.interrupted-1" / "prompt.md").exists()
 assert res["build_success"] and res["failure"] is None and "Xvfb failed" in res["noinput"]["harness_error"][0], res
 
-# 기록 형식: 버전·커밋, 뺀 필드(LiteLLM 시절)는 없음
+# 기록 형식: 버전·커밋이 있고, LiteLLM 시절에 뺀 필드는 없다
 assert res["schema_version"] == records.SCHEMA_VERSION == 2
 assert res["versions"]["meno_commit"] == MENO and res["versions"]["sfml_commit"] == res["versions"]["sfml_commit_meno_condition"] == SFML
 for gone in ("cost", "model_params", "prompt_cache"):

@@ -1,6 +1,6 @@
 """Meno 문서 초안 만들기 (SeoulTech-Fiat-Lux/Meno#30).
 
-측정·요약·그림·Tracy 결과를 모아 Meno 저장소의 docs/benchmark.md 초안과, #30 종료 댓글 초안을 만든다.
+측정·요약·그림·Tracy 결과를 모아 Meno 저장소의 docs/benchmark.md 초안과 #30 종료 댓글 초안을 만든다.
 숫자와 표는 결과 파일에서 옮기고, 해석과 결론은 사람이 쓰도록 "(작성)" 자리를 남긴다.
 
 사용 (benchmark/ 에서, summarize.py·figures.py·tracy.py 다음에):
@@ -44,7 +44,7 @@ def section(md: str, title_prefix: str) -> str:
 
 
 def filled_notes(notes: str) -> str:
-    """notes.md에서 사람이 채운 "관찰"과 "판단"만 꺼낸다. 양식 그대로(항목이 ':'로 끝남)면 빈 문자열."""
+    """notes.md에서 사람이 채운 "관찰"과 "판단"만 꺼낸다. 양식을 채우지 않았으면(항목이 ':'로 끝남) 빈 문자열을 돌려준다."""
     parts = []
     for title in ("관찰", "판단"):
         m = re.search(rf"^## {title}\s*$(.*?)(?=^## |\Z)", notes, re.S | re.M)
@@ -65,12 +65,16 @@ def warnings(out: Path, env: dict, vsync: dict, verdicts: dict, notes_ok: bool) 
         w.append(f"소프트웨어 렌더러({renderer})로 쟀다. GPU 성능이 아니다.")
     if env.get("meno", {}).get("dirty"):
         w.append("meno를 고친 채로 빌드했다(dirty). 어느 코드인지 재현할 수 없다.")
+    if env.get("bench_app", {}).get("dirty"):
+        w.append("측정 프로그램(bench_app/)을 커밋하지 않은 채로 쟀다. 어느 코드인지 재현할 수 없다.")
     if not vsync:
         w.append("vsync.json이 없다. vsync_check.py --out <결과 폴더>로 수직 동기화가 꺼지는지 확인한다.")
     elif not vsync.get("ok"):
         w.append(f"수직 동기화 확인 실패: {vsync.get('message', '')}")
     if verdicts.get("vsync_locked"):
         w.append(f"수직 동기화에 묶인 대상이 있다: {'; '.join(verdicts['vsync_locked'])}")
+    if "bench_app" in env and not env["bench_app"].get("commit"):
+        w.append("측정 프로그램(bench_app/)의 버전을 알 수 없다. git 저장소 안에서 run.py를 돌렸는지 확인한다.")
     if not env.get("meno", {}).get("commit"):
         w.append("env.json에 meno 커밋이 없다. 어느 meno로 쟀는지 알 수 없다.")
     if not notes_ok:
@@ -81,7 +85,7 @@ def warnings(out: Path, env: dict, vsync: dict, verdicts: dict, notes_ok: bool) 
 
 
 def key_numbers(out: Path, targets: list[str]) -> list[str]:
-    """TL;DR에 넣을 숫자: 가장 큰 N에서 대상별 평균, 기준 대비 비."""
+    """TL;DR에 넣을 숫자: 가장 큰 N에서의 대상별 평균과 기준 대비 비."""
     rows = list(csv.DictReader((out / "summary.csv").open(newline="", encoding="utf-8")))
     n = max(int(r["count"]) for r in rows)
     mean = {r["target"]: float(r["mean_ms"]) for r in rows if int(r["count"]) == n}
@@ -103,8 +107,9 @@ def main() -> None:
     sweep = env.get("config", {}).get("sweep", {})
     targets = verdicts["targets"]
     meno = env.get("meno", {})
-    exp_commit = subprocess.run(["git", "-C", str(HERE), "rev-parse", "--short", "HEAD"],
-                                capture_output=True, text=True).stdout.strip()
+    # 측정한 당시의 측정 프로그램 버전(env.json). 없으면 지금 저장소의 커밋을 적는다.
+    exp_commit = env.get("bench_app", {}).get("commit", "")[:7] or subprocess.run(
+        ["git", "-C", str(HERE), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
 
     report = out / "report"
     images = report / "docs" / IMAGES
@@ -163,7 +168,7 @@ def main() -> None:
 | OS | {env.get("platform", "-")} |
 | 컴파일러 | {" ".join(env.get("gcc", [])) or "-"} |
 | meno | `{meno.get("commit", "-")[:7]}` ({meno.get("describe", "-")}) |
-| 측정 도구 | meno_exp `{exp_commit or "-"}`의 `benchmark/` |
+| 측정 프로그램 | meno_exp `{exp_commit or "-"}`의 `benchmark/bench_app/` (meno를 고치지 않고 공개 API로만 잼) |
 | 수직 동기화 확인 | {vsync.get("message", "없음")} |
 
 {wsl_note}
@@ -229,9 +234,9 @@ meno_exp의 `benchmark/README.md`를 따른다.
 
 ```bash
 python3 vsync_check.py --out results/<결과 폴더>
-python3 run.py --meno <Meno 경로>
+python3 run.py
 python3 summarize.py results/<결과 폴더> && python3 figures.py results/<결과 폴더>
-python3 tracy.py capture --meno <Meno 경로>
+python3 tracy.py capture
 ```
 """
     doc = re.sub(r"\n{3,}", "\n\n", doc)
@@ -250,7 +255,7 @@ python3 tracy.py capture --meno <Meno 경로>
 A sprite-count benchmark (N = {", ".join(f"{n:,}" for n in sweep.get("counts", []))}) comparing raw SFML, meno's `Renderer`, and meno's `GameObject` + `Sprite` path, to decide whether meno needs sprite batching.
 
 **:hammer_and_wrench: Implementation Details:**
-`benchmarks/` (`MENO_BUILD_BENCHMARKS`, off by default) draws N moving sprites with frame limit and vsync off; a runner repeats each (target, N) {sweep.get("reps", "-")} times in fresh processes and reports mean and p99 frame time. Tracy (`MENO_ENABLE_TRACY`) breaks a frame into stages by self time. {TODO}
+A standalone benchmark program fetches meno at the frozen commit and uses only its public API, so meno itself is unchanged. It draws N moving sprites with frame limit and vsync off, updating exactly once per frame on every path; a runner repeats each (target, N) {sweep.get("reps", "-")} times in fresh processes and reports mean and p99 frame time. A Tracy build replays `Game::run()` step by step through public calls to break a frame into stages by self time. {TODO}
 
 **:microscope: Academic/Technical Significance:**
 {TODO} What the stage breakdown shows about where the cost of a high-level 2D API comes from.

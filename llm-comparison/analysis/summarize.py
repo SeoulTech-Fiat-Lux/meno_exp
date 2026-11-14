@@ -6,7 +6,7 @@
 
 읽는 것: <폴더>/runs*.jsonl (사람마다 따로 쓴 기록 모두), runs/context_tokens.jsonl (run.py --measure-context).
 형식은 harness/records.py에 있다.
-본 실행 추정은 시범 회차의 평균을 본 실행의 모든 모델에 그대로 적용한 어림값이다. 게임이 퐁보다 크면 더 든다.
+본 실행 추정은 시범 회차의 평균을 본 실행의 모든 모델에 그대로 적용한 어림값이다. 게임이 퐁보다 크면 실제로는 더 든다.
 """
 from __future__ import annotations
 
@@ -125,7 +125,7 @@ def print_projection(rows: list[dict], cfg: dict) -> None:
     print("|---|---|---|---|---|---|---|")
     totals: dict[str, list[float]] = defaultdict(lambda: [0, 0, 0, 0, 0])
     for model in cfg["models"]:
-        shards = 2 if model.get("backend") == "codex-cli" else 1  # README: ChatGPT 구독자 2인이 --shard로 나눔
+        shards = 2 if model.get("backend") == "codex-cli" else 1  # README에 따라 ChatGPT 구독자 2인이 --shard로 나눠 돌린다
         runs = calls = prompt = completion = hours = 0.0
         for condition in conditions:
             stats = per_condition[condition]

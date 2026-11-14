@@ -10,19 +10,19 @@ llm-comparison/work/
 __pycache__/
 .venv/
 
-# 대용량 산출물은 git 밖에 보관 (녹화, 실행 파일)
+# 대용량 산출물(녹화, 실행 파일)은 git 밖에 보관한다.
 *.mp4
 *.mkv
 llm-comparison/runs/**/game
 llm-comparison/runs-mock/
 
-# 블라인드 채점 폴더. 대응표는 blind.py가 저장소 밖에만 쓰게 하고, 채점이 끝난 뒤 grading/mapping.csv로 커밋한다
+# 블라인드 채점 폴더. blind.py는 대응표를 저장소 밖에만 쓰며, 대응표는 채점이 끝난 뒤 grading/mapping.csv로 커밋한다.
 blind/
 
-# 문맥 묶음을 만들 때 받는 출처 저장소
+# 문맥 묶음을 만들 때 내려받는 출처 저장소
 llm-comparison/contexts/src/
 
-# 성능 측정(#30): 빌드 폴더, 흐름 점검 결과, Tracy 캡처(크므로 화면 캡처와 notes.md만 커밋)
+# 성능 측정(#30): 빌드 폴더, 흐름 점검 결과, Tracy 캡처. Tracy 캡처는 크므로 화면 캡처와 notes.md만 커밋한다.
 benchmark/work/
 benchmark/results-mock/
 *.tracy

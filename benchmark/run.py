@@ -1,15 +1,16 @@
 """성능 측정 실행기 (SeoulTech-Fiat-Lux/Meno#30).
 
-Meno 저장소의 벤치마크 실행 파일을 Release로 빌드하고, bench.toml의 (대상, N, 반복)마다 새 프로세스로 돌려
-프레임 시간 CSV와 측정 환경을 결과 폴더에 모은다. 측정 코드 자체는 Meno 저장소에 있다.
+측정 프로그램(bench_app/)을 Release로 빌드하고, bench.toml의 (대상, N, 반복)마다 새 프로세스로 돌려
+프레임 시간 CSV와 측정 환경을 결과 폴더에 모은다. bench_app은 동결한 meno(46f8934)를 받아 공개 API로만
+재므로 Meno 저장소는 필요 없다.
 
 사용 (benchmark/ 에서):
-    python3 run.py --mock                          # 실행 파일 없이 흐름 점검 (results-mock/)
-    python3 run.py --meno ~/Meno --dry-run         # 돌릴 목록만 출력
-    python3 run.py --meno ~/Meno                   # 빌드 후 측정 (results/<날짜>-<meno 커밋>/)
-    python3 run.py --meno ~/Meno --bin <실행 파일>  # 이미 빌드한 실행 파일로 측정
+    python3 run.py --mock                  # 실행 파일 없이 흐름 점검 (results-mock/)
+    python3 run.py --dry-run               # 돌릴 목록만 출력
+    python3 run.py                         # 빌드 후 측정 (results/<날짜>-<meno 커밋>/)
+    python3 run.py --bin <실행 파일>       # 이미 빌드한 실행 파일로 측정
 
-이미 기록된 (대상, N, 반복)은 건너뛰므로, 중단돼도 같은 명령(같은 --out)으로 이어서 돌린다.
+이미 기록된 (대상, N, 반복)은 건너뛰므로, 중단돼도 같은 명령(같은 --out)으로 이어서 돌릴 수 있다.
 """
 from __future__ import annotations
 
@@ -25,11 +26,11 @@ import sys
 import time
 from pathlib import Path
 
-from common import (HERE, check_renderer, cmake_build, git_info, gl_env, gl_info, load_config, raw_path,
-                    read_frame_ms, run_env, sh)
+from common import (HERE, bench_versions, build_bench, check_renderer, gl_env, gl_info, load_config, pinned_meno,
+                    raw_path, read_frame_ms, run_env, sh)
 
 
-def environment(meno: Path | None, build_dir: Path | None, gl: dict) -> dict:
+def environment(build_dir: Path | None, gl: dict) -> dict:
     env = {
         "recorded_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "platform": platform.platform(),
@@ -45,12 +46,11 @@ def environment(meno: Path | None, build_dir: Path | None, gl: dict) -> dict:
         "gl_env": gl_env(dict(os.environ)),
         "cpu_governor": sh(["cat", "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"]),
     }
-    if meno:
-        env["meno"] = git_info(meno)
+    env |= bench_versions(build_dir)
     if build_dir and (build_dir / "CMakeCache.txt").exists():
         cache = (build_dir / "CMakeCache.txt").read_text(errors="replace").splitlines()
         env["cmake_cache"] = {l.split(":", 1)[0]: l.split("=", 1)[1] for l in cache
-                              if l.startswith(("CMAKE_BUILD_TYPE:", "CMAKE_CXX_COMPILER:", "MENO_BUILD_BENCHMARKS:"))}
+                              if l.startswith(("CMAKE_BUILD_TYPE:", "CMAKE_CXX_COMPILER:", "BENCH_ENABLE_TRACY:"))}
     return env
 
 
@@ -70,7 +70,7 @@ def key(job: dict) -> tuple:
 
 
 def read_frames(path: Path, expected: int) -> list[float]:
-    """실행 파일 약속: 머리글 frame,frame_ms 와 기록 프레임 수만큼의 줄."""
+    """실행 파일 약속을 검사한다: 머리글 frame,frame_ms와 기록 프레임 수만큼의 줄이 있어야 한다."""
     values = read_frame_ms(path)
     if len(values) != expected:
         raise ValueError(f"프레임 {len(values)}개 (기대 {expected}개)")
@@ -80,8 +80,8 @@ def read_frames(path: Path, expected: int) -> list[float]:
 
 
 def mock_frames(job: dict, frames: int) -> list[float]:
-    # 흐름 점검용 가짜 값. N에 비례하는 비용 + 가끔 튀는 프레임. 단계가 늘수록 스프라이트당 비용을 조금씩 얹는다.
-    rng = random.Random(str(key(job)))  # 문자열 시드는 실행마다 같다
+    # 흐름 점검용 가짜 값. N에 비례하는 비용에 가끔 튀는 프레임을 더한다. 단계가 늘수록 스프라이트당 비용을 조금씩 얹는다.
+    rng = random.Random(str(key(job)))  # 문자열 시드는 프로세스가 바뀌어도 같은 난수열을 낸다
     per_sprite = {"sfml": 0.0007, "meno-renderer": 0.0008}.get(job["target"], 0.0010)
     base = 0.4 + job["count"] * per_sprite
     return [base * rng.uniform(0.95, 1.05) * (3 if rng.random() < 0.01 else 1) for _ in range(frames)]
@@ -124,7 +124,6 @@ def preflight(binary, cfg: dict, proc_env: dict, work: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--meno", type=Path, help="Meno 저장소 경로 (--mock이 아니면 필요)")
     ap.add_argument("--bin", type=Path, help="이미 빌드한 실행 파일. 주면 빌드하지 않는다")
     ap.add_argument("--out", type=Path, help="결과 폴더 (기본 results/<날짜>-<meno 커밋 7자리>)")
     ap.add_argument("--config", type=Path, default=HERE / "bench.toml")
@@ -138,11 +137,8 @@ def main() -> None:
     cfg = load_config(args.config)
     if args.reps:
         cfg["sweep"]["reps"] = args.reps
-    if not args.mock and not args.meno:
-        ap.error("--meno가 필요하다 (흐름 점검만 하려면 --mock)")
 
-    meno = args.meno.expanduser().resolve() if args.meno else None
-    commit = git_info(meno)["commit"][:7] if meno else "mock"
+    commit = "mock" if args.mock else pinned_meno()[:7]
     out = args.out or HERE / ("results-mock" if args.mock else "results") / f"{dt.date.today():%Y%m%d}-{commit}"
     jobs = plan(cfg["sweep"])
     log_path = out / "runs.jsonl"
@@ -166,23 +162,22 @@ def main() -> None:
     if not args.mock:
         check_renderer(gl, args.allow_software)
 
-    build_dir = HERE / "work" / f"build-{commit}"
+    build_dir = HERE / "work" / "build"
     binary = args.bin
     if not args.mock and not binary:
-        cmake_build(meno, build_dir, cfg["build"]["cmake_args"], cfg["build"]["jobs"])
-        binary = build_dir / cfg["build"]["binary"]
+        binary = build_bench(build_dir, cfg["build"]["cmake_args"], cfg["build"]["jobs"])
     if not args.mock and not Path(binary).exists():
         sys.exit(f"실행 파일이 없다: {binary}")
     if not args.mock and todo:
         preflight(binary, cfg, proc_env, HERE / "work" / "preflight")
 
     (out / "raw").mkdir(parents=True, exist_ok=True)
-    # 환경은 처음 한 번만 쓴다. 이어서 돌릴 때 다른 PC에서 돌면 섞이므로 비교해서 경고한다.
+    # 환경은 처음 한 번만 기록한다. 이어서 돌릴 때 다른 PC에서 돌리면 결과가 섞이므로, 기록된 환경과 비교해 다르면 멈춘다.
     env_path = out / "env.json"
-    env = environment(meno, None if args.mock else build_dir, gl)
+    env = environment(None if args.mock or args.bin else build_dir, gl)
     if env_path.exists():
         old = json.loads(env_path.read_text(encoding="utf-8"))
-        changed = [k for k in ("cpu", "gl_renderer", "meno") if old.get(k) != env.get(k)]
+        changed = [k for k in ("cpu", "gl_renderer", "meno", "bench_app") if old.get(k) != env.get(k)]
         if changed:
             sys.exit(f"이전 기록과 측정 환경이 다르다: {changed}. 다른 --out을 쓴다")
     else:

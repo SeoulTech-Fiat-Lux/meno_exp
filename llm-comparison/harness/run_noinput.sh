@@ -4,8 +4,8 @@
 #   run_noinput.sh <빌드 폴더(game과 assets/가 있는 곳)> <출력 폴더> [초=30]
 #
 # 출력: record.mp4, stdout.txt, stderr.txt, frametime/(Mesa HUD 덤프), result.json
-#   result.json의 exit_code: 124면 끝까지 살아 있었음(timeout이 끝냄), 그 밖의 값은 스스로 끝났거나 죽음.
-#   early_exit: 10초 안에 끝났으면 true (요구사항: 10초 안에 비정상 종료가 없어야 함).
+#   result.json의 exit_code: 124이면 끝까지 살아 있었다는 뜻이고(timeout이 끝냄), 그 밖의 값이면 스스로 끝났거나 죽은 것이다.
+#   early_exit: 10초 안에 끝났으면 true (요구사항: 10초 안에 비정상 종료가 없어야 한다).
 set -euo pipefail
 
 build_dir=$(realpath "$1")
@@ -39,7 +39,7 @@ end=$(date +%s.%N)
 wait "$ffmpeg_pid" 2>/dev/null || true
 
 # bc는 1초 미만을 ".31"처럼 앞의 0 없이 쓴다. 그대로 JSON에 넣으면 깨지므로 printf로 "0.310" 꼴로 맞춘다.
-# 게임이 시작 직후 죽는 회차에서 생긴다 (LC_ALL=C: 소수점이 쉼표인 로캘을 피함).
+# 이런 값은 게임이 시작 직후 죽는 회차에서 생긴다 (LC_ALL=C는 소수점이 쉼표인 로캘을 피하려는 것이다).
 elapsed=$(LC_ALL=C printf '%.3f' "$(echo "$end - $start" | bc)")
 early=$(echo "$elapsed < 10 && $exit_code != 124" | bc)
 cat >"$out_dir/result.json" <<EOF

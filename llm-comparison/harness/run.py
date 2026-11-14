@@ -33,7 +33,7 @@ import tomllib
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent  # llm-comparison/
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I로 실행해도 같은 폴더의 모듈을 찾게
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I로 실행해도 같은 폴더의 모듈을 찾도록 한다
 import freeze  # noqa: E402
 import llm  # noqa: E402
 import records as runlog  # noqa: E402
@@ -87,7 +87,7 @@ def prepare_workspace(cfg: dict, condition: str) -> Path:
     if stamp.exists() and stamp.read_text() == template_hash and (work / "build" / "CMakeCache.txt").exists():
         return work
     shutil.copy(template, work / "CMakeLists.txt")
-    shutil.copy(BASE / cond["mock_source"], work / "main.cpp")  # configure용 자리 채움
+    shutil.copy(BASE / cond["mock_source"], work / "main.cpp")  # configure할 때 쓸 임시 main.cpp
     print(f"[{condition}] configure (처음 한 번, SFML 빌드 포함 수 분)", flush=True)
     subprocess.run(["cmake", "-S", str(work), "-B", str(work / "build"),
                     f"-DMINIGAME_ASSETS_DIR={BASE / 'assets'}"], check=True, stdout=subprocess.DEVNULL)
@@ -104,7 +104,7 @@ def build(cfg: dict, work: Path, code: str) -> tuple[bool, str, float]:
     (work / "main.cpp").write_text(code, encoding="utf-8")
     game = work / "build" / "game"
     if game.exists():
-        game.unlink()  # 실패한 빌드가 이전 실행 파일을 남기지 않게
+        game.unlink()  # 빌드가 실패했을 때 이전 실행 파일이 남지 않도록 지운다
     start = time.monotonic()
     proc = subprocess.run(["cmake", "--build", str(work / "build"), "--target", "game",
                            "-j", str(cfg["experiment"]["build_jobs"])],
@@ -123,7 +123,7 @@ def error_excerpt(log: str, lines: int, work: Path | None = None) -> str:
 
 
 def run_noinput(cfg: dict, work: Path, out: Path) -> dict:
-    """무입력 실행·녹화·프레임 시간. 실패해도 하니스를 멈추지 않는다 (멈추면 이 회차를 LLM에게 새로 받게 됨)."""
+    """무입력 실행·녹화·프레임 시간 측정을 한다. 실패해도 하니스를 멈추지 않는다(멈추면 이 회차를 LLM에게 새로 받게 된다)."""
     steps = [("run_noinput.sh", [str(BASE / "harness" / "run_noinput.sh"), str(work / "build"), str(out),
                                  str(cfg["experiment"]["noinput_seconds"])]),
              ("frametime_stats.py", [sys.executable, str(BASE / "harness" / "frametime_stats.py"), str(out)])]
@@ -149,7 +149,7 @@ def run_noinput(cfg: dict, work: Path, out: Path) -> dict:
 # 회차 실행
 # ---------------------------------------------------------------------------
 def environment() -> dict:
-    """프레임 시간과 빌드 결과를 해석할 때 필요한 실행 환경. 소프트웨어 렌더링(llvmpipe)이라 CPU와 Mesa 버전이 중요하다."""
+    """프레임 시간과 빌드 결과를 해석할 때 필요한 실행 환경. 소프트웨어 렌더링(llvmpipe)을 쓰므로 CPU와 Mesa 버전이 중요하다."""
     os_name = None
     if Path("/etc/os-release").exists():
         for line in Path("/etc/os-release").read_text().splitlines():
@@ -255,7 +255,7 @@ def run_once(cfg: dict, run: Run, model_llm, out_dir: Path, skip_noinput: bool, 
         "game": run.game, "condition": run.condition, "rep": run.rep,
         "rounds": len(rounds), "build_success": success, "failure": failure, "failure_detail": failure_detail,
         "attempt": len(interrupted) + 1, "interrupted_attempts": interrupted,
-        # 비교 지표는 캐시와 무관한 원래 토큰 수(prompt_tokens, completion_tokens)다. 캐시 토큰은 참고용.
+        # 비교 지표는 캐시와 무관한 원래 토큰 수(prompt_tokens, completion_tokens)다. 캐시 토큰은 참고용이다.
         "prompt_tokens": total("prompt_tokens"), "completion_tokens": total("completion_tokens"),
         "reasoning_tokens": total("reasoning_tokens"),
         "cached_tokens": total("cached_tokens"), "cache_write_tokens": total("cache_write_tokens"),
@@ -280,10 +280,11 @@ MEASURE_ASK = "\n\n위 문서를 받았으면 OK라고만 답하세요."
 
 
 def measure_context(cfg: dict, model: dict, model_llm, conditions: list[str]) -> list[dict]:
-    """조건별 문맥 묶음의 입력 토큰 수를 모델의 실제 토크나이저로 잰다.
-    (문맥 + 짧은 요청)과 (짧은 요청만)을 따로 보내 입력 토큰의 차이를 문맥 토큰으로 본다. 시스템 프롬프트 등
-    CLI가 붙이는 부분은 두 호출에 똑같이 들어가 빠진다. 한국어(meno)와 영어(SFML)는 바이트당 토큰 수가 달라
-    바이트로는 비교할 수 없기 때문이다. 결과는 runs/context_tokens.jsonl에 쌓는다 (모델·조건·묶음 해시별)."""
+    """조건별 문맥 묶음의 입력 토큰 수를 모델의 실제 토크나이저로 잰다. 한국어(meno)와 영어(SFML)는
+    바이트당 토큰 수가 달라 바이트로는 비교할 수 없기 때문이다.
+    (문맥 + 짧은 요청)과 (짧은 요청만)을 따로 보내 입력 토큰의 차이를 문맥 토큰으로 본다. 시스템 프롬프트처럼
+    CLI가 붙이는 부분은 두 호출에 똑같이 들어가므로 차이에서 빠진다. 결과는 runs/context_tokens.jsonl에
+    모델·조건·묶음 해시별로 쌓는다."""
     rows = []
     base = model_llm.complete(Run(model, "context", "none", 0), [{"role": "user", "content": MEASURE_ASK.strip()}])
     for condition in conditions:
@@ -315,7 +316,7 @@ def select_models(cfg: dict, args) -> list[dict]:
         return [{"tier": "mock", "id": "mock"}]
     wanted = args.models
     if args.games == "pilot" and wanted == "all" and cfg["games"].get("pilot_models"):
-        wanted = ",".join(cfg["games"]["pilot_models"])  # 시범 실행은 정해 둔 모델로만
+        wanted = ",".join(cfg["games"]["pilot_models"])  # 시범 실행은 정해 둔 모델로만 돌린다
         args.models = wanted
     models = cfg["models"] if wanted == "all" else \
         [m for m in cfg["models"] if m["id"] in set(wanted.split(",")) or m.get("tier") in set(wanted.split(","))]
@@ -374,7 +375,7 @@ def main() -> None:
     inputs = freeze.inputs_hash()
     lock = json.loads(freeze.LOCK.read_text(encoding="utf-8")) if freeze.LOCK.exists() else None
     frozen = lock is not None and lock["inputs_sha256"] == inputs
-    if main_run and not frozen and not args.dry_run:  # 회차 목록 보기는 동결 전에도 된다
+    if main_run and not frozen and not args.dry_run:  # 회차 목록은 동결 전에도 볼 수 있다
         freeze.check()
         sys.exit("본 실행은 동결 상태에서만 시작한다. harness/freeze.py write로 동결하거나 바뀐 입력을 되돌린다.")
 
@@ -398,7 +399,7 @@ def main() -> None:
         out_dir = BASE / "runs" / "main"
     else:
         out_dir = BASE / ("runs-mock" if args.mock else "runs") / f"{label}-{inputs[:8]}"
-    # 사람마다 다른 기록 파일에 쓴다. 각자 커밋해도 git에서 충돌하지 않는다. 건너뛸 회차는 모든 기록 파일에서 찾는다.
+    # 사람마다 다른 기록 파일에 쓰므로 각자 커밋해도 git에서 충돌하지 않는다. 건너뛸 회차는 모든 기록 파일에서 찾는다.
     who = "" if args.models == "all" else "-" + runlog.slug(args.models)
     log_path = out_dir / f"runs{who}{shard_tag}.jsonl"
     records = runlog.load_records(out_dir, required=False)

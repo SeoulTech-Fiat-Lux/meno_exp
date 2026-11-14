@@ -6,12 +6,12 @@ REFRESH_MS = {hz: 1000 / hz for hz in (60, 75, 90, 120, 144, 165, 240)}
 
 
 def percentile(sorted_values: list[float], q: float) -> float:
-    """가장 가까운 순위 방식. llm-comparison/harness/frametime_stats.py, Tracy csvexport와 같다."""
+    """가장 가까운 순위(nearest-rank) 방식의 백분위수. llm-comparison/harness/frametime_stats.py, Tracy csvexport와 같은 방식이다."""
     return sorted_values[min(len(sorted_values) - 1, int(q * len(sorted_values)))]
 
 
 def nearest_refresh(ms: float) -> tuple[int, float]:
-    """가장 가까운 주사율과, 그 주기에서 떨어진 비율."""
+    """가장 가까운 주사율과 그 주기에서 벗어난 비율."""
     hz, period = min(REFRESH_MS.items(), key=lambda kv: abs(kv[1] - ms))
     return hz, abs(period - ms) / period
 

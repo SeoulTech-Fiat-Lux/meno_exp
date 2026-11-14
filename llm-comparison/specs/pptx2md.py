@@ -44,7 +44,7 @@ EDITS = [
     ("앞 슬라이드와", "앞 절과", "md 구조에 맞춤"),
     ("앞 슬라이드", "앞 절", "md 구조에 맞춤"),
     ("'화면 색' 슬라이드", "'화면 색' 절", "md 구조에 맞춤"),
-    # 팀 내부 문서: #35로 이미 보완된 기능
+    # 팀 내부 문서: #35에서 이미 보완한 기능
     ("보완 예정인 다각형 그리기의 검증 대상이기도 함.",
      "#35에서 보완한 다각형 외곽선 그리기의 검증 대상이기도 함.",
      "#35 완료 반영"),
@@ -97,7 +97,7 @@ def convert(pptx: Path, doc: str, notes_out: list[str]) -> str:
                 code.append(shape.text_frame.text.replace("\v", "\n").strip("\n"))
         if index == 1:
             out.append(f"# {title}\n")
-            out += [line[2:] for line in body]  # 부제는 목록이 아닌 한 줄
+            out += [line[2:] for line in body]  # 부제는 목록이 아니라 한 줄로 옮긴다
             out.append("")
             continue
         out.append(f"## {title}\n")

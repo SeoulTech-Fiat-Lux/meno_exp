@@ -1,15 +1,15 @@
-"""블라인드 채점 결과를 모은다. 두 단계로 쓴다 (PLAN 2.3·2.4절).
+"""블라인드 채점 결과를 모은다. 두 단계로 나눠 쓴다 (PLAN 2.3·2.4절).
 
 1단계, 채점이 끝나면 (대응표 없이, 조건을 모르는 채로):
     python3 grading/collect.py agree ~/blind grading/results
     - judgments.csv      모든 채점자의 항목별 판정 (플레이 항목만)
     - agreement.md       채점자 일치도: 일치율, Cohen's κ, Gwet AC1 (전체와 게임별)
-    - disagreements.csv  두 채점자가 어긋난 항목. 합의 회의에서 final 칸(통과/실패)을 채운다
-    - incomplete.csv     비어 있는 판정 (채점을 마저 한다)
+    - disagreements.csv  두 채점자의 판정이 어긋난 항목. 합의 회의에서 final 칸(통과/실패)을 채운다
+    - incomplete.csv     비어 있는 판정 (이 칸들을 마저 채점한다)
 
 2단계, 합의가 끝나면 (이때 처음으로 대응표를 연다):
     python3 grading/collect.py final ~/blind grading/results ~/sealed/meno-exp-mapping.csv
-    - run_scores.csv     회차별 통과율 (analysis/analyze.py가 읽음)
+    - run_scores.csv     회차별 통과율 (analysis/analyze.py가 읽는다)
     - blinding.csv       채점자의 조건 추측과 정답, 채점 시간
 
 판정 표기는 통과/실패, pass/fail, P/F, O/X, 1/0을 받는다. how = harness 항목은 채점하지 않는다.
@@ -50,7 +50,7 @@ def write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
 
 
 def load_judgments(blind_dir: Path) -> tuple[list[dict], list[dict], dict]:
-    """(판정, 빈 칸, 항목 정보). 게임은 채점표의 항목 ID 앞부분으로 안다 (조건 정보는 없음)."""
+    """(판정, 빈 칸, 항목 정보)를 돌려준다. 게임은 채점표 항목 ID의 앞부분으로 알아낸다(조건 정보는 없다)."""
     judgments, blanks, items = [], [], {}
     for sheet in sorted(blind_dir.glob("*/sheet-*.csv")):
         blind_id, grader = sheet.parent.name, sheet.stem.removeprefix("sheet-")
@@ -75,7 +75,7 @@ def agreement(pairs: list[tuple[int, int]]) -> dict:
     pe_kappa = pa * pb + (1 - pa) * (1 - pb)
     q = (pa + pb) / 2
     pe_ac1 = 2 * q * (1 - q)
-    kappa = (po - pe_kappa) / (1 - pe_kappa) if pe_kappa < 1 else None  # 모두 같은 값이면 정의되지 않음
+    kappa = (po - pe_kappa) / (1 - pe_kappa) if pe_kappa < 1 else None  # 모두 같은 값이면 κ가 정의되지 않는다
     ac1 = (po - pe_ac1) / (1 - pe_ac1) if pe_ac1 < 1 else None
     return {"n": n, "agreement": po, "kappa": kappa, "ac1": ac1, "pass_rate": q}
 

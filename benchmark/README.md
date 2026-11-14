@@ -3,12 +3,13 @@
 스프라이트 N개를 그리는 프레임 시간을 meno로 그릴 때와 SFML을 직접 쓸 때로 나눠 잰다. 결과는 배칭을 적용할지 정하는 근거로 쓴다.
 #29(개발 비용)와 따로 재는 실행 비용이다. #29의 D4에서 넘겨받은 "적 200·400마리" 상황도 여기서 잰다.
 
-- **측정 코드:** Meno 저장소의 `benchmarks/`(CMake 옵션 `MENO_BUILD_BENCHMARKS`, 기본 `OFF`). 문서는 Meno의 `docs/benchmark.md`.
-- **이 폴더:** 그 실행 파일을 정해진 조건으로 돌리는 실행기, 결과 요약기, 측정 결과.
+- **측정 프로그램:** 이 폴더의 `bench_app/`. Meno는 동결했으므로(`46f8934`, #29와 같은 커밋) Meno 저장소는 고치지 않는다. `bench_app`이 그 커밋을 FetchContent로 받아 공개 API로만 잰다.
+- **이 폴더:** 측정 프로그램, 그것을 정해진 조건으로 돌리는 실행기, 요약·그림·문서 초안 도구, 측정 결과. 결과 문서는 측정이 끝난 뒤 Meno의 `docs/benchmark.md`로 옮긴다.
 
 ```
 bench.toml       N 목록, 대상, 반복 수, 워밍업·기록 프레임 수, 실행 명령
-run.py           Meno를 Release로 빌드하고 (대상, N, 반복)마다 새 프로세스로 실행, 환경과 함께 기록
+bench_app/       측정 프로그램 meno_bench (C++, 동결한 meno·SFML·Tracy를 커밋 해시로 받음)
+run.py           bench_app을 Release로 빌드하고 (대상, N, 반복)마다 새 프로세스로 실행, 환경과 함께 기록
 summarize.py     평균·p50·p99 표(summary.md, summary.csv)와 판정 결과(summary.json)
 figures.py       배칭 판단용 그림 4장과 그 값 표(figures/)
 tracy.py         Tracy 캡처 도구 빌드, 캡처, 구간별 비용 표·그림(tracy/)
@@ -23,19 +24,48 @@ results/<날짜>-<meno 커밋>/   env.json, runs.jsonl, raw/<대상>-<N>-rep<k>.
 - **의존 방향:** 실행 도구(`run.py`, `tracy.py`, `vsync_check.py`)와 분석 도구(`summarize.py`, `figures.py`, `report.py`)는 서로를 import하지 않고 `common.py`, `stats.py`, `style.py`만 쓴다. 분석 도구끼리는 결과 폴더의 파일로만 주고받는다.
 - **판정은 JSON으로:** `report.py`는 경고를 낼 때 `summary.md`의 문장이 아니라 `summary.json`(수직 동기화에 묶인 대상, 실패한 측정)을 읽는다. 사람이 읽는 문장은 고쳐도 된다.
 
-## 실행 파일 약속 (Meno 쪽에서 맞출 것)
+## 측정 프로그램 (bench_app/)
 
-실행기는 아래 형식만 가정한다. Meno 쪽에서 다르게 정하면 `bench.toml`의 `[build].binary`와 `[run].command`만 고친다.
+Meno 저장소를 고치지 않고 재려고, 측정 프로그램을 이 저장소에 둔다. `llm-comparison/templates/meno`와 같은 방식으로 meno `46f8934`와 SFML 3.1.0(`8835b6b`)을 커밋 해시로 받는다. `run.py`·`tracy.py`가 알아서 빌드하므로 직접 빌드할 일은 없다.
+
+- **공개 API만으로 충분한 이유 (2026-11-14, `46f8934` 헤더·소스로 확인):**
+  - 필요한 함수가 모두 공개다: `Game::window()`, `renderer()`, `scenes()`, `SceneManager::update()`·`draw()`·`changeScene()`·`shutdown()`, `Window::pollEvents()`, `Renderer::beginFrame()`·`endFrame()`·`camera()`.
+  - `changeScene()`은 진행 중인 갱신이 없으면 바로 적용된다(비공개 `applyPending()`은 필요 없다).
+  - `meno::Time`은 `Application::run`만 쓰고, 라이브러리 안에서 읽는 곳이 없다.
+  - meno는 수직 동기화를 건드리지 않아 SFML 기본값(꺼짐)을 따른다. `Renderer::draw` 한 번은 `sf::Sprite` 하나를 만들어 `draw`를 한 번 부른다(SFML 직접과 같은 일).
+
+### 실행 파일 약속
+
+실행기는 아래 형식만 가정한다(`bench.toml`의 `[run].command`).
 
 ```
-meno_bench --target sfml|meno-renderer|meno-object --count N --warmup W --frames F --out <경로.csv> --seed S
+meno_bench --target sfml|meno-renderer|meno-object --count N --warmup W --frames F --out <경로.csv> --seed S [--loop run|direct]
 ```
 
 - **출력 CSV:** 머리글 `frame,frame_ms`, 이어서 기록 프레임 F줄. 워밍업 W프레임은 기록하지 않는다. 실행기는 줄 수가 F가 아니거나 0 이하인 값이 있으면 실패로 기록한다.
-- **프레임 시간:** 한 프레임의 시작부터 다음 프레임 시작까지(갱신·그리기·`display()` 포함), 고해상도 시계로 ms.
-- **같게 할 것:** 세 대상은 같은 텍스처 1장, 같은 창 크기, 같은 시드로 정한 같은 초기 위치·크기·회전·속도를 쓴다. 다른 것은 그리는 경로뿐이어야 한다.
-- **프레임 제한:** meno는 `ApplicationConfig::framerateLimit = 0`, SFML 대상은 `setFramerateLimit(0)`, `setVerticalSync(false)`. meno에는 수직 동기화를 켜고 끄는 API가 없어 SFML 기본값(꺼짐)을 따른다. 드라이버가 강제하는 경우를 막으려고 실행기가 `vblank_mode=0`, `__GL_SYNC_TO_VBLANK=0`을 넘긴다.
-- **종료:** 정상 종료면 0, 에셋 로드 실패 등은 0이 아닌 값.
+- **표준 오류:** `frames=… updates=… recorded=…` 한 줄. 갱신이 프레임마다 한 번이었는지 확인할 수 있다(`runs.jsonl`의 `stderr_tail`에 남는다).
+- **종료:** 정상 종료면 0, 인자가 틀리면 2, 텍스처·장면을 만들지 못하면 1.
+
+### 세 대상과 공정하게 만드는 규칙
+
+| 대상 | 루프 | 프레임마다 하는 일 |
+|---|---|---|
+| `sfml` | `sf::RenderWindow` 루프 | 이벤트 → `step()` → `sf::Sprite` N개에 위치·회전 → `clear` → `draw` N번 → `display` |
+| `meno-renderer` | `game.run()` | update 핸들러에서 `step()`, draw 핸들러에서 `Renderer::draw` N번 |
+| `meno-object` | `game.run()` | update 핸들러에서 `step()` 후 GameObject N개의 `Transform`에 위치·회전, `Scene::drawScene`이 그림 |
+
+- **같은 입력:** 32×32 텍스처 하나(같은 픽셀로 만듦), 1280×720 창, 시드로 정한 같은 초기 위치·속도·회전, 기준점은 텍스처 중심. `meno-object`는 텍스처를 `shared_ptr`로 공유한다(`Texture&&`로 넘기면 객체마다 따로 생김).
+- **같은 이동:** 세 대상 모두 프레임마다 공통 이동 함수 `step()`을 한 번 부른다(등속 이동, 경계에서 튕김, 일정한 회전, 고정 dt 1/60초).
+- **갱신은 프레임마다 정확히 한 번:** meno의 `Application`은 고정 시간 간격(기본 1/60초)으로 `update()`를 부른다. 그대로 두면 프레임이 1ms일 때 16프레임에 한 번만 갱신돼 SFML 대상보다 일을 덜 한다. 그래서 meno 대상은 `ApplicationConfig{.fixedTimeStep = 1e-6, .maxUpdatesPerFrame = 1, .framerateLimit = 0}`으로 만든다. 확인 결과 SFML은 721프레임에 갱신 721번, meno는 721프레임에 720번이었다(첫 프레임 하나만 빠지며, 이 프레임은 워밍업에 속한다).
+- **프레임 시간:** 프레임마다 같은 지점에서 찍은 시각의 간격이다. SFML은 `display()` 뒤, meno는 draw 핸들러(`display()` 직전, 프레임마다 한 번)에서 찍는다. 간격은 어느 쪽이든 한 프레임 전체다.
+- **프레임 제한:** meno는 `framerateLimit = 0`, SFML 대상은 `setFramerateLimit(0)`, `setVerticalSyncEnabled(false)`. 드라이버가 강제하는 경우를 막으려고 실행기가 `vblank_mode=0`, `__GL_SYNC_TO_VBLANK=0`을 넘긴다.
+
+### `--loop direct` (Tracy용)
+
+Tracy 구간은 호출 사이에 넣어야 하는데 `Game::run()` 안은 고칠 수 없다. 그래서 `--loop direct`는 `Game::run()`이 프레임마다 하는 일을 공개 API로 같은 순서로 부른다: `pollEvents` → `scenes().update` → `beginFrame` → 카메라 저장 → `scenes().draw` → 카메라 복원 → `endFrame`. 빠지는 것은 `Clock`과 `meno::Time` 갱신뿐이다.
+
+- **검증 (2026-11-14, RTX 5070 Ti, `meno-object`, Tracy 끔, 3회씩 번갈아 돌린 중앙값):** `game.run()` 대비 N=1000에서 +1.4%, N=10000에서 +0.4%. 같은 루프의 반복 사이 차이(3~4%) 안이다.
+- **쓰는 곳:** Tracy 캡처에만 쓴다(`bench.toml`의 `[tracy].extra_args`). 측정 수치는 `game.run()`(`--loop run`, 기본)으로 낸다.
 
 ## 정한 사항
 
@@ -45,12 +75,12 @@ meno_bench --target sfml|meno-renderer|meno-object --count N --warmup W --frames
 |---|---|---|
 | B1 | **대상 3개:** `sfml`(SFML 직접), `meno-renderer`(meno `Renderer`로 직접), `meno-object`(`GameObject` + `Sprite` 컴포넌트). 기준은 `sfml` | 배칭 판단에 실제로 쓰는 숫자는 사용자가 쓰는 경로인 `meno-object`다. 그것만 재면 느린 이유가 그리기 때문인지, 장면 순회·컴포넌트 비용 때문인지 나눌 수 없다. 세 단계를 재면 비용이 어디서 붙는지 보이고, 배칭이 줄이는 것은 `Renderer` 단계의 비용이다. 늘어나는 시간은 7개 N × 5회 = 대상당 35번 실행이라 몇 분 |
 | B2 | **정해진 규칙으로 움직인다:** 스프라이트마다 시드로 정한 속도로 이동하고, 창 경계에 닿으면 튕기고, 일정한 각속도로 회전한다. 고정 dt(1/60초)로 갱신한다 | 실제 게임은 매 프레임 변환이 바뀐다. 멈춰 있으면 변환 갱신 비용이 빠져 meno에 유리하게 나온다 |
-| B3 | **Tracy 옵션 `MENO_ENABLE_TRACY`(기본 `OFF`)** | 기존 `MENO_BUILD_EXAMPLES`, `MENO_BUILD_TESTS`, `MENO_BUILD_BENCHMARKS`와 같은 `MENO_` 규칙. 무엇을 빌드하는 게 아니라 계측을 켜는 옵션이라 `BUILD`가 아니라 `ENABLE` |
+| B3 | **Tracy 옵션 `BENCH_ENABLE_TRACY`(기본 `OFF`, `bench_app`의 옵션)** | Meno를 동결했으므로 Meno 쪽 옵션(`MENO_ENABLE_TRACY`)은 두지 않는다. 무엇을 빌드하는 게 아니라 계측을 켜는 옵션이라 `BUILD`가 아니라 `ENABLE` |
 
 - **B2 주의:** 세 대상이 같은 이동 계산을 해야 공정하다. 이동 코드는 공통 함수로 빼고, 각 대상은 그 결과(위치·회전)만 받아 자기 경로로 그린다. 그래야 대상 사이의 차이가 그리는 경로의 차이만 남는다.
 - **B2 선택:** 여유가 있으면 정지 상태도 한 번 따로 잰다(`--static` 같은 옵션). 순수 그리기 비용이 따로 보인다. 필수는 아니다.
-- **B3 구현:** Tracy는 FetchContent로 고정 태그를 받고, 옵션이 켜졌을 때만 `TRACY_ENABLE`을 정의한다. 코드에는 Tracy 매크로를 직접 쓰지 말고 meno 쪽 매크로(예: `MENO_PROFILE_SCOPE`)로 감싼다. 옵션이 꺼지면 빈 매크로가 되므로 사용자 빌드에 Tracy 의존성이 생기지 않는다.
-- **B3 측정 분리:** Tracy를 켠 빌드의 수치는 측정 표에 쓰지 않는다(계측 비용이 섞임). 실행기는 `MENO_ENABLE_TRACY`를 넘기지 않는다.
+- **B3 구현:** `bench_app`이 Tracy를 커밋 해시로 받고, 옵션이 켜졌을 때만 `TRACY_ENABLE`을 켠다. 코드는 `BENCH_ZONE`·`BENCH_FRAME` 매크로로 감싸므로, 옵션이 꺼지면 빈 매크로가 된다. meno 안쪽은 계측하지 않고, `--loop direct`로 meno 공개 함수 호출 사이를 잰다.
+- **B3 측정 분리:** Tracy를 켠 빌드의 수치는 측정 표에 쓰지 않는다(계측 비용이 섞임). `run.py`는 `BENCH_ENABLE_TRACY`를 넘기지 않고, 빌드 폴더도 따로 쓴다(`work/build`, `work/build-tracy`).
 
 ## 측정 환경
 
@@ -110,7 +140,7 @@ python3 vsync_check.py --out results/<날짜>-<meno 커밋>   # 처음엔 SFML �
 ### 측정할 때
 
 - **같은 조건으로:** 전원 연결, 고성능 전원 모드, 다른 프로그램 종료, 창을 가리지 않기. 노트북은 발열로 클럭이 내려가므로 `order = "interleaved"`로 (대상, N)을 섞어 한쪽에 몰리지 않게 한다.
-- **기록:** `env.json`에 CPU, GL 렌더러·드라이버, 컴파일러, CMake 빌드 타입, meno 커밋과 고친 채로 빌드했는지(`dirty`)가 남는다. 이어서 돌릴 때 CPU, GL 렌더러, meno 커밋 중 하나라도 바뀌었으면 실행기가 멈춘다(남은 비디오 메모리처럼 실행마다 바뀌는 값은 비교하지 않는다).
+- **기록:** `env.json`에 CPU, GL 렌더러·드라이버, 컴파일러, CMake 빌드 타입, 실제로 빌드한 meno 커밋(`meno`), 측정 프로그램의 버전과 커밋하지 않은 수정이 있었는지(`bench_app`의 `dirty`)가 남는다. 빌드한 meno가 `bench_app/CMakeLists.txt`에 고정한 커밋과 다르면 실행기가 멈춘다. 이어서 돌릴 때 CPU, GL 렌더러, meno, bench_app 중 하나라도 바뀌었으면 멈춘다(남은 비디오 메모리처럼 실행마다 바뀌는 값은 비교하지 않는다).
 
 ## 실행
 
@@ -121,11 +151,11 @@ python3 run.py --mock --reps 2      # 실행 파일 없이 흐름 점검 (result
 ```
 
 ```bash
-python3 run.py --meno ~/Meno --dry-run
+python3 run.py --dry-run
 ```
 
 ```bash
-python3 run.py --meno ~/Meno        # Release 빌드 후 측정. 결과 폴더 이름을 출력함
+python3 run.py                      # bench_app Release 빌드 후 측정. 결과 폴더 이름을 출력함
 ```
 
 ```bash
@@ -137,7 +167,7 @@ python3 figures.py results/<날짜>-<meno 커밋>     # summarize.py 다음에
 ```
 
 - **사전 점검:** 본 측정 전에 대상마다 가장 작은 N으로 10프레임만 돌려 본다(기록하지 않음). 하나라도 실패하면 결과 폴더를 만들기 전에 멈춘다. 대상 이름이나 출력 형식이 이 문서의 약속과 어긋나도 회차를 낭비하지 않게 하려는 것이다. `--mock`에서는 건너뛴다.
-- **빌드 폴더:** `work/build-<커밋>/` (커밋 안 함). 이미 빌드한 실행 파일이 있으면 `--bin`으로 준다.
+- **빌드 폴더:** `work/build/` (커밋 안 함). 처음에는 meno·SFML을 받아 빌드하느라 몇 분 걸리고, 그다음부터는 바뀐 것만 다시 빌드한다. 이미 빌드한 실행 파일이 있으면 `--bin`으로 준다.
 - **실패:** 실패한 측정은 `runs.jsonl`에 `ok: false`와 `stderr_tail`로 남고 표에서 빠진다. 요약 아래에 빠진 목록이 나온다.
 - **통계:** 측정마다 평균·p50·p99를 내고(백분위는 #29의 `frametime_stats.py`와 같은 방식), 반복 사이에서는 중앙값과 최소·최대를 낸다.
 - **비:** 표에는 이웃한 두 대상의 비(`meno-renderer/sfml`은 `Renderer` 단계, `meno-object/meno-renderer`는 객체 단계의 비용)와 전체 비(`meno-object/sfml`)가 나온다. 대상 순서는 `bench.toml`의 `targets`를 따른다.
@@ -162,14 +192,12 @@ python3 figures.py results/<날짜>-<meno 커밋>     # summarize.py 다음에
 
 측정과 따로, Tracy를 켠 빌드로 `meno-object`를 캡처해 프레임 시간이 어느 구간에 쓰이는지 본다. 이 빌드의 수치는 측정 표에 쓰지 않는다(계측 비용이 섞임). 조건은 `bench.toml`의 `[tracy]`(N = 1000, 10000, 워밍업 120, 기록 600프레임).
 
-### Meno 쪽에서 맞출 것
+### 구간 (bench_app이 넣는 것)
 
-- **버전:** Tracy는 계측되는 쪽과 캡처 도구의 버전이 같아야 연결된다. Meno의 FetchContent 태그를 `bench.toml`의 `[tracy].version`(`v0.15.0`)과 같게 고정한다.
-- **옵션:** `MENO_ENABLE_TRACY=ON`일 때만 `TRACY_ENABLE`을 정의한다. 실행 파일 명령과 출력은 측정과 같다(실행 파일 약속).
-- **프레임 구간:** 프레임 하나를 통째로(갱신·그리기·`display()`) `MENO_PROFILE_SCOPE("frame")`으로 감싸고, 끝에 `FrameMark`를 부른다. 보고서는 `frame` 구간으로 워밍업 프레임을 잘라 내고 프레임당 비용을 낸다. 없으면 보고서가 멈춘다.
-- **구간 단위:** 구간은 단계마다 하나다. 스프라이트마다 구간을 열지 않는다(N = 10000이면 프레임마다 1만 개가 쌓여 캡처가 커지고 계측 비용이 결과를 바꾼다).
-- **구간:** `MENO_PROFILE_SCOPE("이름")`으로 감싼다. 이름은 자유지만 아래처럼 `영역.동작`으로 짓기를 권한다. 구간끼리 겹쳐도 된다(보고서는 self time을 쓴다).
-  - `bench.move`(공통 이동 함수), `scene.update`, `scene.render`(장면 순회), `renderer.draw`(그리기 호출), `window.display`
+- **버전:** Tracy는 계측되는 쪽과 캡처 도구의 버전이 같아야 연결된다. `bench_app/CMakeLists.txt`와 `bench.toml`의 `[tracy].version`이 같은 `v0.15.0`(`f2a4f2529e7e71844c9e434b877770a21ecf7587`)이다. 하나를 바꾸면 다른 쪽도 바꾼다.
+- **프레임 구간:** 프레임 하나를 통째로 `frame` 구간으로 감싸고 끝에 `FrameMark`를 부른다. 보고서는 `frame` 구간으로 워밍업 프레임을 잘라 내고 프레임당 비용을 낸다.
+- **구간 단위:** 구간은 단계마다 하나다. 스프라이트마다 구간을 열지 않는다(N = 10000이면 프레임마다 1만 개가 쌓여 캡처가 커지고 계측 비용이 결과를 바꾼다). 그래서 그리기 호출 하나(`Renderer::draw`)에는 구간이 없고, 그 비용은 대상 비교(`meno-renderer` 대 `sfml`)로 본다.
+- **구간 이름:** `app.events`(`pollEvents`), `app.update`(`scenes().update`), `bench.move`(공통 이동 함수), `bench.apply`(이동 결과를 `Transform`에 옮기기), `renderer.begin`(`beginFrame`), `scene.draw`(`scenes().draw`: 장면 순회와 그리기 호출), `window.display`(`endFrame`). SFML 대상도 같은 이름으로 감싼다.
 
 ### 실행
 
@@ -178,7 +206,7 @@ python3 tracy.py tools                    # 처음 한 번. Tracy 캡처 도구�
 ```
 
 ```bash
-python3 tracy.py capture --meno ~/Meno    # Tracy 빌드 → N마다 캡처 → CSV 내보내기 → 보고서
+python3 tracy.py capture                  # Tracy 빌드(work/build-tracy) → N마다 캡처 → CSV 내보내기 → 보고서
 ```
 
 ```bash
@@ -196,7 +224,8 @@ python3 tracy.py capture --mock           # Tracy 없이 보고서 흐름 점검
 | `notes.md` | 사람이 쓰는 분석(캡처 조건, 관찰, 판단). 없을 때만 양식을 만든다 | 함 |
 
 - **읽는 법:** 워밍업을 뺀 기록 프레임만 센다. 구간 비용은 self time(그 구간에서 자식 구간을 뺀 시간)이라 더하면 프레임 시간이 된다. `not instrumented`는 `frame` 구간의 self time, 곧 어느 하위 구간에도 속하지 않은 시간이다. 이게 크면 구간이 빠진 곳이 있다. 구간 합이 프레임 평균과 5% 넘게 다르면 `zones.md` 위에 주의가 붙는다.
-- **배칭 판단:** `zones.md`의 "늘어난 비용"에서 N에 비례해 늘어나는 구간 중 그리기 호출에 해당하는 것(`renderer.draw` 등)이 배칭으로 줄어든다. 장면 순회·변환 갱신은 배칭으로 줄지 않는다.
+- **배칭 판단:** `zones.md`의 "늘어난 비용"에서 N에 비례해 늘어나는 구간 중 그리기에 해당하는 것(`scene.draw`, `window.display`)이 배칭으로 줄어든다. SFML의 `draw`는 OpenGL 명령을 바로 내지만 GPU는 그 명령을 나중에 처리한다. GPU가 밀리면 그 대기가 `display()`에 잡히므로, `scene.draw`는 CPU 쪽 비용, `window.display`는 GPU를 기다린 시간으로 읽는다. 장면 순회·변환 갱신은 배칭으로 줄지 않는다.
+- **Tracy를 켜면 느려진다:** 2026-11-14 RTX 5070 Ti에서 `meno-object` 프레임 평균이 N=1000에서 2.1 → 2.7ms, N=10000에서 9.7 → 14.2ms로 늘었고, 늘어난 시간은 주로 `window.display`에 잡혔다(원인은 확인하지 않았다). 그래서 `window.display`의 몫은 실제보다 크게 나올 수 있다. CPU 쪽 구간(`scene.draw`, `bench.*`, `app.*`)끼리의 비율 위주로 읽고, 절대 시간은 측정 표(`summary.md`)를 쓴다.
 - **화면 캡처:** Tracy 프로그램에서 본 타임라인·통계 화면은 png로 `tracy/`에 두고 `notes.md`에 설명을 단다.
 
 ## Meno 문서 초안 (report.py)
@@ -214,7 +243,7 @@ python3 report.py results/<날짜>-<meno 커밋>   # summarize.py, figures.py, t
 | `issue-30-comment.md` | SeoulTech-Fiat-Lux/Meno#30 종료 댓글 (이슈 양식의 TL;DR 형식) |
 
 - **초안 경고:** 아래 중 하나라도 있으면 문서 맨 위에 경고가 붙는다. 경고가 남은 문서는 결과로 쓰지 않는다.
-  - mock 데이터, GL 렌더러 없음·소프트웨어 렌더러, meno 커밋 없음·고친 채로 빌드(`dirty`)
+  - mock 데이터, GL 렌더러 없음·소프트웨어 렌더러, meno 커밋 없음·고친 채로 빌드(`dirty`), 측정 프로그램(`bench_app/`)을 커밋하지 않은 채로 잼
   - `vsync.json` 없음·실패, `summary.md`의 수직 동기화 경고, 실패해 빠진 측정
   - `tracy/notes.md`의 관찰·판단이 비어 있음
 - **Tracy 노트:** `notes.md`에서 사람이 채운 "관찰"과 "판단"만 옮긴다. 채운 뒤 `report.py`를 다시 돌린다.
@@ -222,7 +251,7 @@ python3 report.py results/<날짜>-<meno 커밋>   # summarize.py, figures.py, t
 
 ## 이슈 체크리스트와의 대응
 
-- **측정 실행 파일:** Meno 저장소 `benchmarks/`. 이 폴더의 약속을 따른다. `run.py`가 측정 전에 대상마다 짧게 돌려 약속을 확인한다.
+- **측정 실행 파일:** 이 폴더의 `bench_app/`(Meno는 고치지 않음). `run.py`가 측정 전에 대상마다 짧게 돌려 약속을 확인한다.
 - **측정 환경 확정:** "측정 환경"의 렌더러 판정과 `vsync_check.py`.
 - **결과 표와 그래프:** `summarize.py`(`summary.md`), `figures.py`(`figures/`).
 - **Tracy로 병목 분석:** `tracy.py`(`tracy/zones.md`, `zones.png`)와 사람이 쓴 `notes.md`.

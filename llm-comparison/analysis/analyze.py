@@ -1,11 +1,11 @@
-"""사전 등록한 분석(PLAN 2.4절)을 그대로 계산한다. 결과를 보기 전에 만든 스크립트이며, 바꾸면 보고서에 적는다.
+"""사전 등록한 분석(PLAN 2.4절)을 그대로 계산한다. 결과를 보기 전에 만든 스크립트이며, 바꾸면 그 사실을 보고서에 적는다.
 
 사용 (llm-comparison/ 에서):
     python3 analysis/analyze.py runs/main grading/results/run_scores.csv analysis/results
-    python3 analysis/analyze.py runs/pilot-<해시> - analysis/pilot     # 채점 전: 하니스 지표만 (통과율은 비움)
+    python3 analysis/analyze.py runs/pilot-<해시> - analysis/pilot     # 채점 전: 하니스 지표만 계산 (통과율은 비움)
 
 출력: report.md (1차·2차·탐색 지표), cells.csv (셀별 조건 평균과 차이), errors.csv (빌드 오류 유형)
-외부 패키지를 쓰지 않는다 (정확 Wilcoxon 검정과 부트스트랩을 직접 계산).
+외부 패키지를 쓰지 않고, 정확 Wilcoxon 검정과 부트스트랩을 직접 계산한다.
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ METRICS = [
      lambda r, s: r["rounds"] if r["build_success"] else None),
     ("completion_tokens", "출력 토큰", "secondary", lambda r, s: r.get("completion_tokens")),
     ("pass_built", "요구사항 통과율 (빌드한 회차만)", "secondary", lambda r, s: s if r["build_success"] else None),
-    # 팀 내부 문서의 "게임 완성 = 대상 항목 모두 통과". 빌드 실패는 미완성(0)
+    # 팀 내부 문서의 정의("게임 완성 = 대상 항목 모두 통과")를 따른다. 빌드 실패는 미완성(0)으로 센다.
     ("complete", "게임 완성률 (모든 플레이 항목 통과)", "secondary",
      lambda r, s: (int(s >= 1.0) if s is not None else None) if r["build_success"] else 0),
     ("code_lines", "코드 줄 수 (빈 줄 제외)", "exploratory", lambda r, s: r.get("code_lines")),
@@ -64,7 +64,7 @@ METRICS = [
 # 통계
 # ---------------------------------------------------------------------------
 def ranks(values: list[float]) -> list[float]:
-    """평균 순위 (동점은 순위를 나눠 가짐)."""
+    """평균 순위. 동점이면 순위를 나눠 가진다."""
     order = sorted(range(len(values)), key=lambda i: values[i])
     result = [0.0] * len(values)
     i = 0
@@ -79,7 +79,7 @@ def ranks(values: list[float]) -> list[float]:
 
 
 def wilcoxon_exact(diffs: list[float]) -> dict:
-    """양측 Wilcoxon 부호순위 검정. 0인 차이는 빼고, 모든 부호 조합(2^m)을 세는 정확 검정."""
+    """양측 Wilcoxon 부호순위 정확 검정. 0인 차이는 빼고 모든 부호 조합(2^m)을 센다."""
     d = [x for x in diffs if x != 0]
     m = len(d)
     if m == 0:
@@ -88,7 +88,7 @@ def wilcoxon_exact(diffs: list[float]) -> dict:
     w_plus = sum(rank for rank, x in zip(r, d) if x > 0)
     center = sum(r) / 2
     observed = abs(w_plus - center)
-    if m > 22:  # 2^22 이상은 너무 많다. 사전 등록 규모(최대 18쌍)에서는 쓰지 않음
+    if m > 22:  # 짝이 22개를 넘으면 조합(2^m)이 너무 많다. 사전 등록 규모(최대 18쌍)에서는 생기지 않는다
         raise ValueError("짝이 너무 많아 정확 검정을 하지 않음")
     extreme = 0
     for signs in itertools.product((0, 1), repeat=m):
@@ -99,7 +99,7 @@ def wilcoxon_exact(diffs: list[float]) -> dict:
 
 
 def bootstrap_ci(diffs: list[float], seed: int) -> dict:
-    """셀을 다시 뽑아 평균·중앙값 차이의 95% 백분위 신뢰구간."""
+    """셀을 다시 뽑아(부트스트랩) 평균·중앙값 차이의 95% 백분위 신뢰구간을 구한다."""
     rng = random.Random(seed)
     means, medians = [], []
     for _ in range(BOOTSTRAP):
@@ -112,7 +112,7 @@ def bootstrap_ci(diffs: list[float], seed: int) -> dict:
 
 
 def holm(pvalues: dict[str, float | None]) -> dict[str, float | None]:
-    """Holm 보정한 p값 (단조 증가 보장)."""
+    """Holm 보정한 p값. 보정한 값이 단조 증가하도록 보장한다."""
     valid = sorted((p, k) for k, p in pvalues.items() if p is not None)
     adjusted, running = {}, 0.0
     for i, (p, k) in enumerate(valid):
@@ -124,7 +124,7 @@ def holm(pvalues: dict[str, float | None]) -> dict[str, float | None]:
 # ---------------------------------------------------------------------------
 # 데이터
 # ---------------------------------------------------------------------------
-load_records = runlog.load_records  # 형식은 harness/records.py
+load_records = runlog.load_records  # 형식은 harness/records.py에 있다
 
 
 def load_scores(path: str) -> dict[str, float]:
@@ -162,14 +162,9 @@ def fmt(v, digits=3):
     return "-" if v is None else f"{v:.{digits}f}"
 
 
-def analyze(runs_dir: Path, scores_path: str, out: Path) -> None:
-    cfg = tomllib.loads((BASE / "experiment.toml").read_text(encoding="utf-8"))
-    seed = cfg["experiment"]["seed"]
-    records = load_records(runs_dir)
-    scores = load_scores(scores_path)
+def compute(records: list[dict], scores: dict[str, float], seed: int) -> tuple[dict, dict]:
+    """(셀 표, 지표별 결과). 보고서(analyze)와 그림(figures.py)이 같은 계산을 쓴다."""
     cells, missing = cell_table(records, scores)
-    out.mkdir(parents=True, exist_ok=True)
-
     results = {}
     for key, label, kind, _ in METRICS:
         diffs = paired_diffs(cells.get(key, {}))
@@ -186,6 +181,15 @@ def analyze(runs_dir: Path, scores_path: str, out: Path) -> None:
     adjusted = holm({k: r.get("p") for k, r in results.items() if r["kind"] == "secondary"})
     for k, p in adjusted.items():
         results[k]["p_holm"] = p
+    return cells, results
+
+
+def analyze(runs_dir: Path, scores_path: str, out: Path) -> None:
+    cfg = tomllib.loads((BASE / "experiment.toml").read_text(encoding="utf-8"))
+    records = load_records(runs_dir)
+    scores = load_scores(scores_path)
+    cells, results = compute(records, scores, cfg["experiment"]["seed"])
+    out.mkdir(parents=True, exist_ok=True)
 
     lines = [f"# 분석 결과: {runs_dir}", "",
              f"회차 {len(records)}개, 채점된 회차 {len(scores)}개. 차이 = meno − SFML (셀 = 모델 × 게임, 셀 안 반복 평균).",
