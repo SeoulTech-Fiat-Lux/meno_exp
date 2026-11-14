@@ -7,6 +7,7 @@ max_rounds = 5              # 빌드 시도 횟수 상한 (첫 응답 포함)
 error_feedback_lines = 100  # 빌드 실패 시 돌려주는 컴파일러 출력 줄 수
 noinput_seconds = 30        # 무입력 실행 시간
 llm_timeout_seconds = 900   # API 호출 한 번의 제한 시간
+max_output_tokens = 32000   # 모든 모델에 같은 출력 상한. 추론 모델은 추론 토큰도 여기에 포함되므로 넉넉히 둠
 api_retries = 5             # API 오류 재시도 횟수 (왕복으로 세지 않음)
 seed = 20261114             # 회차 순서를 섞는 시드
 build_jobs = 4

@@ -31,6 +31,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent  # llm-comparison/
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I로 실행해도 freeze.py를 찾게
+import freeze  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -155,9 +157,11 @@ def error_excerpt(log: str, lines: int, work: Path | None = None) -> str:
 CODE_BLOCK = re.compile(r"```(?:cpp|c\+\+|cc|cxx)[^\n]*\n(.*?)```", re.S)
 
 
-def extract_code(text: str) -> str | None:
-    match = CODE_BLOCK.search(text or "")
-    return match.group(1) if match else None
+def extract_code(text: str) -> tuple[str | None, int]:
+    """닫힌 cpp 코드 블록 중 가장 긴 것을 main.cpp로 본다. 바뀐 부분만 보여 주는 짧은 블록이 앞에 있어도
+    전체 파일을 고르게 하기 위함이다. (코드, 블록 수)를 돌려준다."""
+    blocks = CODE_BLOCK.findall(text or "")
+    return (max(blocks, key=len) if blocks else None), len(blocks)
 
 
 @dataclass
@@ -199,12 +203,13 @@ class LiteLLM:
         retryable = tuple(getattr(self.litellm.exceptions, name) for name in (
             "RateLimitError", "Timeout", "APIConnectionError", "ServiceUnavailableError",
             "InternalServerError") if hasattr(self.litellm.exceptions, name))
+        # 출력 길이 상한은 공급자 기본값에 맡기지 않고 모든 모델에 같은 값을 준다. 모델 params가 있으면 그것이 우선.
+        params = {"max_tokens": exp["max_output_tokens"]} | run.model.get("params", {})
         for attempt in range(exp["api_retries"] + 1):
             start = time.monotonic()
             try:
                 response = self.litellm.completion(model=run.model["id"], messages=messages,
-                                                   timeout=exp["llm_timeout_seconds"],
-                                                   **run.model.get("params", {}))
+                                                   timeout=exp["llm_timeout_seconds"], **params)
                 break
             except retryable as error:  # API 오류는 왕복으로 세지 않고 다시 시도
                 if attempt == exp["api_retries"]:
@@ -239,7 +244,31 @@ def template_versions(cfg: dict) -> dict:
             "sfml_tag": sfml_tag.group(1) if sfml_tag else None}
 
 
-def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: int) -> dict:
+def _first_line(command: list[str]) -> str | None:
+    try:
+        return subprocess.run(command, capture_output=True, text=True, check=True).stdout.splitlines()[0].strip()
+    except Exception:
+        return None
+
+
+def environment() -> dict:
+    """프레임 시간과 빌드 결과를 해석할 때 필요한 실행 환경. 소프트웨어 렌더링(llvmpipe)이라 CPU와 Mesa 버전이 중요하다."""
+    os_name = None
+    if Path("/etc/os-release").exists():
+        for line in Path("/etc/os-release").read_text().splitlines():
+            if line.startswith("PRETTY_NAME="):
+                os_name = line.split("=", 1)[1].strip('"')
+    cpu = None
+    if Path("/proc/cpuinfo").exists():
+        cpu = next((l.split(":", 1)[1].strip() for l in Path("/proc/cpuinfo").read_text().splitlines()
+                    if l.startswith("model name")), None)
+    return {"os": os_name, "kernel": platform.release(), "cpu": cpu, "cpus": os.cpu_count(),
+            "gcc": _first_line(["gcc", "--version"]), "cmake": _first_line(["cmake", "--version"]),
+            "mesa": _first_line(["dpkg-query", "-W", "-f=${Version}", "libgl1-mesa-dri"]),
+            "wsl": "microsoft" in platform.release().lower()}
+
+
+def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: int, context: dict) -> dict:
     exp = cfg["experiment"]
     run_dir = out_dir / run.run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -255,16 +284,18 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
         reply = llm.complete(run, messages)
         (run_dir / f"response_{number}.md").write_text(reply.content, encoding="utf-8")
         messages.append({"role": "assistant", "content": reply.content})
-        code = extract_code(reply.content)
+        code, blocks = extract_code(reply.content)
+        truncated = reply.finish_reason == "length"
         record = {"round": number, "model_served": reply.model, "prompt_tokens": reply.prompt_tokens,
                   "completion_tokens": reply.completion_tokens, "cached_tokens": reply.cached_tokens,
-                  "cost": reply.cost, "finish_reason": reply.finish_reason,
-                  "latency_s": round(reply.latency_s, 2), "code_found": code is not None}
+                  "cost": reply.cost, "finish_reason": reply.finish_reason, "truncated": truncated,
+                  "latency_s": round(reply.latency_s, 2), "code_found": code is not None, "code_blocks": blocks}
         if code is None:
             record["build_ok"] = False
             rounds.append(record)
-            messages.append({"role": "user",
-                             "content": (BASE / "prompts" / "format_error.md").read_text(encoding="utf-8")})
+            # 길이 제한으로 잘렸으면 그 사실을 알려 준다. 형식 오류와 구분해 기록한다.
+            notice = "truncated.md" if truncated else "format_error.md"
+            messages.append({"role": "user", "content": (BASE / "prompts" / notice).read_text(encoding="utf-8")})
             continue
         (run_dir / f"main_{number}.cpp").write_text(code, encoding="utf-8")
         ok, log, build_s = build(cfg, work, code)
@@ -309,9 +340,13 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
         "prompt_tokens": total("prompt_tokens"), "completion_tokens": total("completion_tokens"),
         "cached_tokens": total("cached_tokens"), "cost": total("cost"),
         "llm_latency_s": total("latency_s"), "code_lines": code_lines,
+        "truncated_rounds": sum(1 for r in rounds if r.get("truncated")),
         "context_bytes": meta["context_bytes"], "hashes": meta["hashes"],
+        "inputs_sha256": context["inputs_sha256"], "frozen": context["frozen"],
+        "max_output_tokens": cfg["experiment"]["max_output_tokens"],
         "versions": template_versions(cfg) | {"python": platform.python_version(),
                                               "litellm": _litellm_version()},
+        "environment": context["environment"],
         "noinput": noinput, "rounds_detail": rounds,
     }
 
@@ -335,8 +370,9 @@ def main() -> None:
     parser.add_argument("--mock-fail-first", action="store_true", help="mock의 첫 답에 컴파일 오류를 넣음")
     parser.add_argument("--skip-noinput", action="store_true", help="무입력 실행을 건너뜀")
     parser.add_argument("--dry-run", action="store_true", help="실행할 회차 목록만 출력")
-    parser.add_argument("--out", help="결과 폴더 (기본: runs/, mock이면 runs-mock/)")
+    parser.add_argument("--out", help="결과 폴더 (기본: 본 실행은 runs/main, 그 밖에는 runs/<게임 묶음>-<입력 해시>)")
     args = parser.parse_args()
+    main_run = args.games == "main" and not args.mock
 
     cfg = tomllib.loads(Path(args.config).read_text(encoding="utf-8"))
     load_dotenv(BASE / ".env")
@@ -354,13 +390,34 @@ def main() -> None:
     reps = args.reps or exp["reps"]
     seed = exp["seed"]
 
+    # 입력(설정, 지시문, 템플릿, 명세, 문맥, 에셋, 채점표, 하니스)의 해시. 본 실행은 동결 잠금과 같아야 시작한다.
+    inputs = freeze.inputs_hash()
+    lock = json.loads(freeze.LOCK.read_text(encoding="utf-8")) if freeze.LOCK.exists() else None
+    frozen = lock is not None and lock["inputs_sha256"] == inputs
+    if main_run:
+        if Path(args.config).resolve() != (BASE / "experiment.toml").resolve():
+            sys.exit("본 실행은 experiment.toml로만 돌린다.")
+        if not frozen:
+            freeze.check()
+            sys.exit("본 실행은 동결 상태에서만 시작한다. harness/freeze.py write로 동결하거나 바뀐 입력을 되돌린다.")
+
     runs = plan_runs(cfg, games, conditions, models, reps, seed)
-    out_dir = Path(args.out) if args.out else BASE / ("runs-mock" if args.mock else "runs")
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # 시범 실행은 입력 해시별로 폴더를 나눈다. 명세나 지시문을 고친 뒤 다시 돌리면 새 폴더에 기록되므로,
+    # 이전 결과 때문에 회차를 건너뛰지 않고, 서로 다른 입력의 결과가 한 기록에 섞이지 않는다.
+    label = args.games if args.games in cfg["games"] else "custom"
+    if args.out:
+        out_dir = Path(args.out)
+    elif main_run:
+        out_dir = BASE / "runs" / "main"
+    else:
+        out_dir = BASE / ("runs-mock" if args.mock else "runs") / f"{label}-{inputs[:8]}"
     log_path = out_dir / "runs.jsonl"
-    done = set()
+    records = []
     if log_path.exists():
-        done = {json.loads(line)["run_id"] for line in log_path.read_text().splitlines() if line.strip()}
+        records = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+    if any(r.get("inputs_sha256") != inputs for r in records):
+        sys.exit(f"{out_dir}에 다른 입력으로 돌린 회차가 있다. 입력을 되돌리거나 다른 폴더(--out)를 쓴다.")
+    done = {r["run_id"] for r in records}
     pending = [r for r in runs if r.run_id not in done]
     print(f"회차 {len(runs)}개 중 남은 것 {len(pending)}개 → {out_dir}")
     if args.dry_run:
@@ -368,10 +425,12 @@ def main() -> None:
             print(f"  {run.order:3} {run.run_id}")
         return
 
+    out_dir.mkdir(parents=True, exist_ok=True)
     llm = MockLLM(cfg, args.mock_fail_first) if args.mock else LiteLLM(cfg)
+    context = {"inputs_sha256": inputs, "frozen": frozen, "environment": environment()}
     for run in pending:
         print(f"[{run.order + 1}/{len(runs)}] {run.run_id}", flush=True)
-        result = run_once(cfg, run, llm, out_dir, args.skip_noinput, seed)
+        result = run_once(cfg, run, llm, out_dir, args.skip_noinput, seed, context)
         with log_path.open("a", encoding="utf-8") as log:
             log.write(json.dumps(result, ensure_ascii=False) + "\n")
 
