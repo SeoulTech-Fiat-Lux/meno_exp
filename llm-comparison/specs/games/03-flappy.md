@@ -37,30 +37,30 @@ meno vs SFML 3 : LLM 생성 비교 실험
 - 결과 화면에서 R을 누르면 게임 상태를 모두 초기화하고(프로그램이 켜져 있는 동안 유지한다고 명세에 적힌 기록은 제외) 플레이를 다시 시작함 (타이틀은 거치지 않음).
 - Esc는 어느 화면에서든 프로그램을 종료함. 창 닫기 버튼도 같음.
 - 화면 문구는 영문 대문자이며, 명세에 적힌 문자열을 그대로 씀.
-- 글자는 fonts/game.ttf로 그리며, 크기는 16의 배수(16·32·48px)로 함.
+- 글자는 assets/fonts/game.ttf로 그리며, 크기는 16의 배수(16·32·48px)로 함.
 - 효과음은 명세에 지정된 사건에서, 지정된 파일로만 재생함.
 
 ## 새와 화면
 
-- 새는 bird.png(32×24, 오른쪽을 향한 그림)로 그림. 그림 중심의 x는 240에 고정되며, 그림 중심의 y는 270에서 시작함. 충돌 영역은 그림 중심에 둔 반지름 10의 원임.
-- 중력 가속도는 아래쪽으로 1500 px/s²임. Space, W, ↑ 중 하나를 누른 순간 세로 속도를 위쪽 480 px/s로 바꾸고 flap.wav를 재생함.
+- 새는 assets/textures/bird.png(32×24, 오른쪽을 향한 그림)로 그림. 그림 중심의 x는 240에 고정되며, 그림 중심의 y는 270에서 시작함. 충돌 영역은 그림 중심에 둔 반지름 10의 원임.
+- 중력 가속도는 아래쪽으로 1500 px/s²임. Space, W, ↑ 중 하나를 누른 순간 세로 속도를 위쪽 480 px/s로 바꾸고 assets/sfx/flap.wav를 재생함.
 - 새는 (세로 속도 ÷ 10)°만큼 그림 중심을 기준으로 기울임. −30°~90°로 제한하며, 시계 방향이 양수임.
 - 새의 충돌 원은 화면 위로 나가지 않으며, 막힐 때 세로 속도를 0으로 함. 바닥은 y=500부터 높이 40의 띠임.
-- 그리는 순서는 배경(background.png) → 기둥 → 바닥 → 새 → 점수임.
-- 플레이 중에는 bgm_flappy.ogg를 볼륨 40%로 반복 재생하고, 결과 화면에서는 멈춤.
+- 그리는 순서는 배경(assets/textures/background.png) → 기둥 → 바닥 → 새 → 점수임.
+- 플레이 중에는 assets/music/bgm_flappy.ogg를 볼륨 40%로 반복 재생하고, 결과 화면에서는 멈춤.
 
 ## 기둥과 점수
 
-- 기둥 한 쌍은 gate.png(64×400) 두 장으로 만듦. 아래 기둥은 그대로, 위 기둥은 세로로 뒤집어 그리며, 두 기둥 사이의 틈은 150px임.
+- 기둥 한 쌍은 assets/textures/gate.png(64×400) 두 장으로 만듦. 아래 기둥은 그대로, 위 기둥은 세로로 뒤집어 그리며, 두 기둥 사이의 틈은 150px임.
 - 틈의 중심 y는 140~400 사이에서 무작위로 정함. 기둥 쌍은 플레이 시작 1초 뒤부터 1.6초마다 화면 오른쪽 밖(x=960)에 생기고, 왼쪽으로 180 px/s로 움직임.
 - 화면 왼쪽 밖으로 완전히 나간 기둥 쌍은 삭제함.
-- 새가 기둥이나 바닥에 닿으면 lose.wav를 재생하고 결과 화면으로 감. 기둥의 충돌 영역은 그림과 같은 사각형임.
-- 새 중심의 x가 기둥 쌍의 오른쪽 끝을 지나면 1점을 얻고 point.wav를 재생함. 점수는 숫자만(예: "3") 화면 위 가운데에 표시함.
+- 새가 기둥이나 바닥에 닿으면 assets/sfx/lose.wav를 재생하고 결과 화면으로 감. 기둥의 충돌 영역은 그림과 같은 사각형임.
+- 새 중심의 x가 기둥 쌍의 오른쪽 끝을 지나면 1점을 얻고 assets/sfx/point.wav를 재생함. 점수는 숫자만(예: "3") 화면 위 가운데에 표시함.
 - 결과 화면에는 "GAME OVER", "SCORE n", "BEST m"을 표시함. BEST는 프로그램이 켜져 있는 동안의 최고 점수임.
 
 ## 화면 색
 
-- 배경: background.png를 그대로 씀
+- 배경: assets/textures/background.png를 그대로 씀
 - 바닥 띠: #3B3747
 - 글자: 흰색 #FFFFFF, 검은색 #000000 외곽선 2px
 - 텍스처가 있는 요소는 텍스처의 색을 그대로 씀.
@@ -98,15 +98,15 @@ meno vs SFML 3 : LLM 생성 비교 실험
 
 ## 제공 에셋
 
-- 이 게임이 쓰는 에셋 (assets/…):
-  - fonts/game.ttf
-  - sfx/point.wav
-  - sfx/lose.wav
-  - sfx/flap.wav
-  - music/bgm_flappy.ogg
-  - textures/background.png (960×540)
-  - textures/bird.png (32×24)
-  - textures/gate.png (64×400)
+- 이 게임이 쓰는 에셋:
+  - assets/fonts/game.ttf
+  - assets/sfx/point.wav
+  - assets/sfx/lose.wav
+  - assets/sfx/flap.wav
+  - assets/music/bgm_flappy.ogg
+  - assets/textures/background.png (960×540)
+  - assets/textures/bird.png (32×24)
+  - assets/textures/gate.png (64×400)
 
 ## 주의 사항
 

@@ -37,7 +37,7 @@ meno vs SFML 3 : LLM 생성 비교 실험
 - 결과 화면에서 R을 누르면 게임 상태를 모두 초기화하고(프로그램이 켜져 있는 동안 유지한다고 명세에 적힌 기록은 제외) 플레이를 다시 시작함 (타이틀은 거치지 않음).
 - Esc는 어느 화면에서든 프로그램을 종료함. 창 닫기 버튼도 같음.
 - 화면 문구는 영문 대문자이며, 명세에 적힌 문자열을 그대로 씀.
-- 글자는 fonts/game.ttf로 그리며, 크기는 16의 배수(16·32·48px)로 함.
+- 글자는 assets/fonts/game.ttf로 그리며, 크기는 16의 배수(16·32·48px)로 함.
 - 효과음은 명세에 지정된 사건에서, 지정된 파일로만 재생함.
 
 ## 구성과 조작
@@ -59,8 +59,8 @@ meno vs SFML 3 : LLM 생성 비교 실험
 - 패들에 닿으면 x 방향을 뒤집고, 반사각 = (공 중심 y − 패들 중심 y) ÷ 48 × 60°로 정함. 차이는 −48~48로 제한하며(최대 ±60°), 양수면 아래쪽으로 감. 속력은 패들 반사마다 5% 늘어 최대 720 px/s이며(벽 반사는 그대로), 반사 직후 공을 패들 바깥으로 옮김.
 - 공이 왼쪽 끝을 완전히 넘으면 CPU, 오른쪽 끝을 완전히 넘으면 플레이어가 1점을 얻음.
 - 먼저 5점을 얻으면 결과 화면으로 감. 문구는 "YOU WIN" 또는 "YOU LOSE", 점수는 "5 : 3" 형식(플레이어 : CPU).
-- 패들·벽 반사 때 hit.wav, 득점 때 point.wav를 재생함.
-- 플레이 중에는 bgm_pong.ogg를 볼륨 40%로 반복 재생하고, 결과 화면에서는 멈춤.
+- 패들·벽 반사 때 assets/sfx/hit.wav, 득점 때 assets/sfx/point.wav를 재생함.
+- 플레이 중에는 assets/music/bgm_pong.ogg를 볼륨 40%로 반복 재생하고, 결과 화면에서는 멈춤.
 
 ## 화면 색
 
@@ -98,11 +98,11 @@ meno vs SFML 3 : LLM 생성 비교 실험
 - 화면 없는 실행은 xvfb-run을 씀.
 - 제공물: 조건별 CMakeLists.txt 템플릿과 공통 assets/ 폴더. 두 조건이 같은 에셋을 씀.
 - 에셋은 상대 경로 assets/…로 엶. 실행 파일은 assets/와 같은 폴더에 있으며, 그 폴더를 작업 디렉터리로 하여 실행함.
-- 이 게임이 쓰는 에셋 (assets/…):
-  - fonts/game.ttf
-  - sfx/hit.wav
-  - sfx/point.wav
-  - music/bgm_pong.ogg
+- 이 게임이 쓰는 에셋:
+  - assets/fonts/game.ttf
+  - assets/sfx/hit.wav
+  - assets/sfx/point.wav
+  - assets/music/bgm_pong.ogg
 
 ## 주의 사항
 

@@ -55,7 +55,8 @@ def main() -> None:
             rows.append({"id": f"{prefix}-{index:02d}", "kind": kind, "section": section,
                          "requirement": text, "how": how, "result": "", "note": ""})
         with (out / f"{game}.csv").open("w", encoding="utf-8-sig", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+            # csv 모듈의 기본 줄바꿈은 CRLF다. 저장소(LF)와 바이트가 달라지면 동결 잠금의 해시가 PC마다 달라진다.
+            writer = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
             writer.writeheader()
             writer.writerows(rows)
         counts = {k: sum(1 for r in rows if r["kind"] == k) for k in ("게임별", "공통")}
