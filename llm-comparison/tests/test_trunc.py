@@ -68,4 +68,20 @@ assert cmd3[cmd3.index("--resume") + 1] == "s1", cmd3
 feedback = (out / "01-pong-sfml-claude-cli_claude-haiku-5-5-r1" / "feedback_1.md").read_text(encoding="utf-8")
 assert kw3["input"] == feedback + "\n\n" + TRUNC
 assert len(calls) == 3  # no retries
+
+# Case C: newer CLI hits the limit, auto-continues (num_turns 2) and returns only the tail fragment.
+# Must count as truncated, discard the fragment, and resend like Case A.
+calls.clear()
+run.build = fb
+frag = {"stdout": json.dumps({"is_error": False, "result": "```cpp\n    tail();\n}\n```", "session_id": "x3",
+                              "stop_reason": "end_turn", "num_turns": 2,
+                              "usage": {"input_tokens": 10, "output_tokens": 35000}, "modelUsage": {"h": {}}})}
+script[:] = [frag, ok("```cpp\nint main(){}\n```", "s4")]
+res = run.run_once(cfg, run.Run(light, "01-pong", "sfml", 2), c, out, True, 1, CTX)
+assert res["build_success"] and res["rounds"] == 2 and res["truncated_rounds"] == 1, res
+r1 = res["rounds_detail"][0]
+assert r1["truncated"] and r1["finish_reason"] == "length" and r1["output_limit_continued"] and not r1["code_found"], r1
+cmd2, kw2 = calls[-1]
+prompt0 = (out / "01-pong-sfml-claude-cli_claude-haiku-5-5-r2" / "prompt.md").read_text(encoding="utf-8")
+assert "--resume" not in cmd2 and kw2["input"] == prompt0 + "\n\n" + TRUNC
 print("ALL OK")

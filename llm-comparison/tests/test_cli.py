@@ -54,7 +54,7 @@ cmd, kw = calls[-1]
 assert kw["input"] == "BIG PROMPT" and "--safe-mode" in cmd and arg(cmd, "--tools") == "" and "--resume" not in cmd
 assert arg(cmd, "--model") == "claude-opus-5-5" and arg(cmd, "--effort") == TOP["effort"]
 assert "당신은" in arg(cmd, "--system-prompt") and "ANTHROPIC_API_KEY" not in kw["env"]
-assert kw["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "32000" and kw["cwd"] and kw["cwd"] != os.getcwd()
+assert kw["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "64000" and kw["cwd"] and kw["cwd"] != os.getcwd()
 assert (a.prompt_tokens, a.cached_tokens, a.cache_write_tokens, a.reasoning_tokens, a.cost, a.finish_reason) == \
        (50100, 0, 50000, 300, None, "stop"), a
 assert a.extra["cost_equiv_usd"] == 0.42 and a.model == "claude-opus-5-5"

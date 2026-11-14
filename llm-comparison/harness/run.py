@@ -396,7 +396,8 @@ class ClaudeCLI(CliBackend):
             return f"{data.get('result', '')} (status {data.get('api_error_status')}, {data.get('terminal_reason')})"
         return None
 
-    # Claude Code는 출력 상한(CLAUDE_CODE_MAX_OUTPUT_TOKENS)을 넘으면 잘린 답 대신 오류를 낸다. 상한은 추론 토큰도 포함한다.
+    # Claude Code는 출력 상한(CLAUDE_CODE_MAX_OUTPUT_TOKENS)을 넘으면 잘린 답 대신 오류를 내거나(이전 버전),
+    # 이어 쓴 마지막 조각만 돌려준다(num_turns > 1, complete() 참고). 상한은 추론 토큰도 포함한다.
     OUTPUT_LIMIT = re.compile(r"exceeded the \d+ output token maximum", re.I)
 
     def is_truncation(self, error: str) -> bool:
@@ -405,7 +406,7 @@ class ClaudeCLI(CliBackend):
     def complete(self, run: Run, messages: list[dict]) -> Reply:
         exp = self.cfg["experiment"]
         cwd, resume, prompt = self.session(run, messages)
-        # 앞 왕복이 출력 상한에 걸렸으면 그 답은 세션에 남지 않았다(마지막 성공 세션에서 이어 가므로).
+        # 앞 왕복이 출력 상한에 걸렸으면 그 답은 이어 가지 않는다(마지막 성공 세션에서 이어 가므로).
         # 모델이 답하지 못한 요청을 이번 안내(prompts/truncated.md)와 함께 다시 보낸다.
         unanswered = self.unanswered.pop(run.run_id, None)
         if unanswered is not None and len(messages) > 1:
@@ -425,7 +426,11 @@ class ClaudeCLI(CliBackend):
         env.pop("ANTHROPIC_API_KEY", None)  # 키가 있으면 구독 대신 API로 과금될 수 있다
         proc, elapsed, retries = self.call(command, prompt, cwd, env)
         data = json.loads(proc.stdout)
-        truncated = bool(data.get("is_error"))  # call()이 돌려준 오류는 출력 상한 초과뿐이다
+        limit_error = bool(data.get("is_error"))  # call()이 돌려준 오류는 출력 상한 초과뿐이다
+        # 2.1.3xx부터는 오류 대신 상한에서 끊고 한 턴 더 이어 쓰며, result에는 마지막 턴의 조각만 담긴다.
+        # 도구를 껐으므로 정상 답은 항상 1턴이다. 2턴 이상이면 잘린 답으로 보고 오류일 때와 똑같이 다시 보낸다.
+        continued = not limit_error and (data.get("num_turns") or 1) > 1
+        truncated = limit_error or continued
         if truncated:
             # 세션은 앞의 성공 지점에 그대로 둔다 (첫 왕복이면 세션이 없어 다음에 새로 시작).
             self.unanswered[run.run_id] = prompt
@@ -451,7 +456,8 @@ class ClaudeCLI(CliBackend):
             extra={"client": self.client, "client_version": self.version, "session_id": data["session_id"],
                    "cost_equiv_usd": data.get("total_cost_usd"), "cli_retries": retries,
                    "num_turns": data.get("num_turns")}
-                  | ({"output_limit_error": data.get("result", "")[:300]} if truncated else {}))
+                  | ({"output_limit_error": data.get("result", "")[:300]} if limit_error else {})
+                  | ({"output_limit_continued": True} if continued else {}))
 
 
 class CodexCLI(CliBackend):
