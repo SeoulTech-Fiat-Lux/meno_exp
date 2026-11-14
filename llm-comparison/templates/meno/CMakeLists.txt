@@ -20,7 +20,7 @@ include(FetchContent)
 FetchContent_Declare(
         meno
         GIT_REPOSITORY https://github.com/SeoulTech-Fiat-Lux/Meno.git
-        GIT_TAG        3a1b67c0eeb42075292e72ef1b65e889f7c4f610 # v0.2.0
+        GIT_TAG        46f8934f0f7754a7e09033c4413b6a5222d4493d # v0.2.0 (태그가 3a1b67c에서 옮겨진 뒤의 커밋)
 )
 # meno는 내부에서 SFML을 태그(3.1.0)로 받는다. FetchContent는 먼저 선언한 것을 쓰므로, 여기서 같은 이름으로
 # 커밋 해시를 먼저 선언해 두 조건이 같은 SFML 커밋으로 빌드되게 한다. 옵션(SYSTEM, EXCLUDE_FROM_ALL)은 meno와 같다.

@@ -9,8 +9,8 @@
   "meno": [
     {
       "repo": "SeoulTech-Fiat-Lux/Meno",
-      "commit": "67a3979d9ed12928cdd55e7afb01174594099345",
-      "commit_note": "현재 main. 동결 태그를 만들면 그 커밋으로 바꾼다",
+      "commit": "46f8934f0f7754a7e09033c4413b6a5222d4493d",
+      "commit_note": "v0.2.0 (동결). 태그가 옮겨졌으므로 해시로만 고정한다",
       "files": [
         "README.md",
         "docs/guide/02-first-game.md",

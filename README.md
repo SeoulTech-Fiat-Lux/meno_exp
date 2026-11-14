@@ -100,12 +100,12 @@ sudo apt-get install -y libx11-6 libxrandr2 libxcursor1 libxi6 libudev1 libgl1 l
 
 본 실행 전에 아래를 순서대로 마치고, 이 저장소에 `freeze-1` 태그를 단다. 이후에는 명세·에셋·템플릿·문맥·지시문·채점표를 바꾸지 않는다(바꾸면 전부 다시 돌린다).
 
-1. **Meno 쪽 정리 (Meno 저장소):** 가이드의 레터박스 UI 안내를 고친다(D2). 가이드 4장 퐁 수치도 바꾼다(D11, 권장). #31을 마무리하고 동결 태그를 만든다(예: `v0.2.1`). 고친 내용은 `specs/CHANGELOG.md`에도 적는다(D10).
-2. **meno 버전 고정:** `templates/meno/CMakeLists.txt`의 `GIT_TAG`와 `contexts/manifest.json`의 meno `commit`을 동결 커밋 해시로 바꾼다.
+1. **Meno 쪽 정리 (완료):** `v0.2.0` = `46f8934`로 동결했다. 고친 내용은 `specs/CHANGELOG.md`에 있다(D2, D10). **이제 meno 문서는 고치지 않는다.**
+2. **meno 버전 고정 (완료):** `templates/meno/CMakeLists.txt`의 `GIT_TAG`와 `contexts/manifest.json`의 meno `commit`이 `46f8934`다.
 3. **문맥 묶음 재생성:** 출처를 고정 커밋으로 받아 묶음을 만들고 커밋한다.
    ```bash
    cd llm-comparison/contexts && mkdir -p src
-   git clone https://github.com/SeoulTech-Fiat-Lux/Meno.git src/Meno && git -C src/Meno checkout <동결 커밋>
+   git clone https://github.com/SeoulTech-Fiat-Lux/Meno.git src/Meno && git -C src/Meno checkout 46f8934f0f7754a7e09033c4413b6a5222d4493d
    git clone https://github.com/SFML/SFML.git src/SFML && git -C src/SFML checkout 8835b6b955c96fa1ad1278a8dae6f05c4143effc
    git clone https://github.com/SFML/SFML-Website.git src/SFML-Website && git -C src/SFML-Website checkout 6d461d96c47d795c671f10e723a1b9ce13533edb
    python3 build_context.py manifest.json meno bundles/meno.md SeoulTech-Fiat-Lux/Meno=src/Meno

@@ -1,4 +1,4 @@
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:README.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:README.md >>>
 <!-- 로고는 GitHub 테마 설정을 따라 하나만 보인다(#gh-light-mode-only, #gh-dark-mode-only).
      <picture>는 OS 설정만 따르므로, GitHub만 다크일 때 검은 글자 로고가 나와 글자가
      보이지 않는다. -->
@@ -151,7 +151,7 @@ Visual Studio 생성기(Windows의 기본값)를 쓰면 실행 파일은 `build/
 
 [zlib](LICENSE).
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/02-first-game.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/02-first-game.md >>>
 # 2장. 첫 게임: Game과 Scene
 
 이 장에서는 화면 안을 튕겨 다니는 공을 만들면서 meno 게임의 기본 구조를 익힙니다. `Game`은 창과 게임
@@ -332,7 +332,7 @@ exit 핸들러가 호출된 뒤 `run()`이 돌아옵니다. Esc 키로 게임을
 
 이전 장: [1장. 설치와 첫 빌드](01-setup.md) · 다음 장: [3장. 그리기](03-drawing.md)
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/03-drawing.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/03-drawing.md >>>
 # 3장. 그리기
 
 이 장에서는 draw 핸들러에서 도형과 텍스트, 이미지를 그리고 색을 지정하는 방법을 다룹니다. 그리기는
@@ -531,7 +531,7 @@ play.setDrawHandler([&](meno::Renderer& renderer) {
 
 이전 장: [2장. 첫 게임: Game과 Scene](02-first-game.md) · 다음 장: [4장. 입력](04-input.md)
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/04-input.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/04-input.md >>>
 # 4장. 입력
 
 이 장에서는 키보드와 마우스 입력을 읽는 방법을 익히고, 마지막으로 지금까지 배운 내용을 모아
@@ -768,7 +768,7 @@ int main() {
 
 이전 장: [3장. 그리기](03-drawing.md) · 다음 장: [5장. GameObject와 컴포넌트](05-gameobjects.md)
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/05-gameobjects.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/05-gameobjects.md >>>
 # 5장. GameObject와 컴포넌트
 
 1부에서는 게임 상태를 변수에 두고 draw 핸들러에서 직접 그렸습니다. 이 장에서는 화면에 놓이는 물체를
@@ -959,7 +959,7 @@ update 안에서 지운 GameObject는 그 update가 끝날 때까지 남아 있�
 
 이전 장: [4장. 입력](04-input.md) · 다음 장: [6장. 충돌 판정](06-collision.md)
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/06-collision.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/06-collision.md >>>
 # 6장. 충돌 판정
 
 이 장에서는 GameObject에 콜라이더를 붙여 서로 겹치는지 판정하고, 겹쳤을 때 막거나 줍는 처리를
@@ -1154,7 +1154,7 @@ meno는 겹침 여부만 판정합니다. 겹친 물체를 밀어내거나 속�
 
 이전 장: [5장. GameObject와 컴포넌트](05-gameobjects.md) · 다음 장: [7장. 씬 전환과 씬 상태](07-scenes.md)
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/07-scenes.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/07-scenes.md >>>
 # 7장. 씬 전환과 씬 상태
 
 이 장에서는 타이틀, 게임, 결과 화면을 각각 Scene으로 만들고 서로 전환합니다. Scene마다 상태를 맡기는
@@ -1337,7 +1337,7 @@ if (PlayState* state = play.getState<PlayState>()) {
 
 이전 장: [6장. 충돌 판정](06-collision.md) · 다음 장: [8장. 오디오](08-audio.md)
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/08-audio.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/08-audio.md >>>
 # 8장. 오디오
 
 이 장에서는 효과음과 배경음악을 재생합니다. meno의 오디오는 짧은 효과음용 `Sound`, 긴 배경음악용
@@ -1492,7 +1492,7 @@ audio.play();
 
 이전 장: [7장. 씬 전환과 씬 상태](07-scenes.md) · 다음 장: [9장. 리소스 관리](09-resources.md)
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/09-resources.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/09-resources.md >>>
 # 9장. 리소스 관리
 
 이 장에서는 `ResourceManager`가 텍스처, 폰트, 효과음 파일을 어떻게 읽고 공유하는지 정리하고, 게임에
@@ -1628,7 +1628,7 @@ int main() {
 
 이전 장: [8장. 오디오](08-audio.md) · 다음 장: [10장. 카메라와 좌표](10-camera.md)
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/10-camera.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/10-camera.md >>>
 # 10장. 카메라와 좌표
 
 이 장에서는 화면보다 넓은 월드를 카메라로 비춥니다. 플레이어를 따라가는 카메라, 확대와 축소, 마우스
@@ -1655,6 +1655,8 @@ int main() {
     std::vector<meno::Vec2f> markers;
     meno::Camera2D camera{.center = player, .size = {800.f, 600.f}};
     game.renderer().setCamera(camera);
+    // UI를 그리는 카메라입니다. 월드 카메라와 size가 같고 움직이지 않습니다.
+    const meno::Camera2D hud{.center = {400.f, 300.f}, .size = {800.f, 600.f}};
 
     meno::Scene& scene = game.scenes().createScene();
     scene.setUpdateHandler([&](double fixedDeltaTime) {
@@ -1707,8 +1709,8 @@ int main() {
         }
         renderer.drawCircle(player, 16.f, {.fill = meno::Color::fromRgb(0x00B1ED)});
 
-        // UI는 화면 좌표로 그립니다. 핸들러가 끝나면 Game이 월드 카메라를 되돌립니다.
-        renderer.resetCamera();
+        // UI는 HUD 카메라로 그립니다. 핸들러가 끝나면 Game이 월드 카메라를 되돌립니다.
+        renderer.setCamera(hud);
         renderer.drawRect({{16.f, 16.f}, {40.f * camera.zoom, 8.f}}, {.fill = meno::colors::White});
     });
 
@@ -1738,9 +1740,14 @@ int main() {
 | `fit` | `Letterbox` | `size`와 창의 종횡비가 다를 때의 처리 |
 
 `size`는 "이 해상도로 설계했다"는 기준입니다. `size`를 정해 두면 창 크기가 바뀌어도 같은 영역이
-비칩니다. `fit`의 기본값인 `Letterbox`는 종횡비를 지키며 남는 영역(띠)을 배경색으로 채우고,
+비칩니다. `fit`의 기본값인 `Letterbox`는 종횡비를 지키는 대신 창의 남는 부분을 띠로 비워 두고,
 `Stretch`는 띠 없이 창을 채우는 대신 그림을 늘립니다. 확대와 축소는 `size`를 바꾸는 대신 `zoom`으로
 합니다.
+
+띠는 프레임마다 화면을 지우는 색인 `GameConfig::clearColor`로 채워집니다. 띠와 배경의 색을 다르게
+하려면 `clearColor`는 띠 색으로 두고, 배경은 게임 화면이나 월드 크기의 사각형으로 그립니다. draw
+핸들러에서 그린 것은 GameObject 위에 놓이므로, GameObject를 함께 쓴다면 배경은 레이어가 가장 작은
+GameObject의 Sprite로 둡니다.
 
 ## 카메라를 정하는 곳
 
@@ -1750,11 +1757,47 @@ int main() {
 - **월드 카메라**는 update 핸들러에서 정합니다. 위 예제처럼 플레이어를 움직인 뒤 `camera.center`를
   옮기고 `game.renderer().setCamera(camera)`를 호출합니다. 한 번 정한 카메라는 다시 바꿀 때까지
   유지됩니다.
-- **UI**는 draw 핸들러에서 `renderer.resetCamera()`를 호출한 뒤 그립니다. `Game`은 draw 핸들러가
-  끝나면 카메라를 핸들러가 호출되기 전의 상태로 되돌리므로, 다음 프레임의 월드 그리기에는 영향이
-  없습니다.
+- **UI**는 draw 핸들러에서 HUD 카메라(다음 절)로 바꾼 뒤에 그립니다. `Game`은 draw 핸들러가 끝나면
+  카메라를 핸들러가 호출되기 전의 상태로 되돌리므로, 다음 프레임의 월드 그리기에는 영향이 없습니다.
 
 GameObject의 Sprite는 draw 핸들러보다 먼저, 그 시점의 월드 카메라로 그려집니다.
+
+## 화면에 고정된 UI
+
+점수나 체력 막대처럼 카메라가 움직여도 화면의 같은 자리에 있어야 하는 UI는 **HUD 카메라**로
+그립니다. HUD 카메라는 월드 카메라와 `size`가 같고, `center`를 `size`의 절반에 고정한 카메라입니다.
+이 카메라로 그리면 UI 좌표의 원점은 띠를 뺀 게임 화면의 왼쪽 위가 됩니다. 창 크기가 바뀌면 UI도 게임
+화면과 함께 커지거나 작아지므로, 창을 크게 키우면 글자가 조금 흐려질 수 있습니다.
+
+UI의 클릭을 판정할 때는 마우스 위치도 HUD 카메라의 좌표로 바꿉니다. update 핸들러에서
+`game.renderer().screenToWorld()`는 월드 카메라를 기준으로 변환하므로, 카메라를 인자로 받는
+`meno::screenToWorld()`를 씁니다.
+
+```cpp
+const meno::Camera2D hud{.center = {400.f, 300.f}, .size = {800.f, 600.f}};
+const meno::Rectf button{{16.f, 64.f}, {160.f, 48.f}};
+
+play.setUpdateHandler([&](double) {
+    // 마우스 위치를 HUD 카메라의 좌표로 바꿔서 판정합니다.
+    const meno::Input& input = game.window().input();
+    const meno::Vec2f mouse{input.mousePosition()};
+    const meno::Vec2f point = meno::screenToWorld(hud, game.renderer().framebufferSize(), mouse);
+    if (input.wasPressed(meno::MouseButton::Left) && button.contains(point)) {
+        // 버튼을 눌렀습니다.
+    }
+});
+play.setDrawHandler([&](meno::Renderer& renderer) {
+    // 월드를 그린 뒤에 HUD 카메라로 바꿉니다.
+    renderer.setCamera(hud);
+    renderer.drawText(*font, "SCORE 0", {16.f, 16.f}, {.characterSize = 32});
+    renderer.drawRect(button, {.fill = meno::colors::Gray});
+});
+```
+
+`renderer.resetCamera()`는 그리기 좌표를 창의 픽셀 좌표로 되돌립니다. 이 좌표는 띠를 따르지
+않으므로, 창의 종횡비가 바뀌면 (16, 16)에 그린 UI가 게임 화면 밖의 띠 위에 놓일 수 있습니다.
+`resetCamera()`는 창 모서리에 붙어야 하는 표시를 그리거나, `viewportPixels()`로 구한 픽셀 영역에
+그릴 때 씁니다.
 
 ## 마우스 위치를 월드 좌표로
 
@@ -1804,11 +1847,55 @@ play.setDrawHandler([&](meno::Renderer& renderer) {
 Scene이 자동으로 그리는 GameObject에는 그 시점의 카메라 하나만 적용됩니다. 화면 분할에 GameObject를
 함께 쓰려면 draw 핸들러에서 카메라마다 `object.draw(renderer)`를 호출해 직접 그립니다.
 
+## 레터박스와 화면 분할
+
+`viewport`는 창 전체에 대한 비율이고, `Letterbox`는 카메라마다 따로 적용됩니다. 따라서 위 예제의 두
+화면은 각자 띠를 가지며, 창을 가로로 늘리면 두 화면 사이에도 띠가 생깁니다. 두 화면을 하나의 게임
+화면 안에 붙여 두려면, 게임 화면이 창에서 차지하는 픽셀 영역을 `viewportPixels()`로 구한 뒤 그
+안에서 `viewport`를 계산합니다.
+
+```cpp
+// 800×600 게임 화면 안의 사각형(게임 화면 좌표)을 창 전체에 대한 viewport 비율로 바꿉니다.
+const auto viewportInGame = [](meno::Vec2u framebuffer, const meno::Rectf& inGame) {
+    const meno::Rectf area =
+        meno::viewportPixels(meno::Camera2D{.size = {800.f, 600.f}}, framebuffer);
+    const float scaleX = area.size.x / 800.f;
+    const float scaleY = area.size.y / 600.f;
+    const auto width = static_cast<float>(framebuffer.x);
+    const auto height = static_cast<float>(framebuffer.y);
+    return meno::Rectf{(area.left() + inGame.left() * scaleX) / width,
+                       (area.top() + inGame.top() * scaleY) / height,
+                       inGame.size.x * scaleX / width, inGame.size.y * scaleY / height};
+};
+const meno::Camera2D hud{.center = {400.f, 300.f}, .size = {800.f, 600.f}};
+
+play.setDrawHandler([&](meno::Renderer& renderer) {
+    // 창 크기가 바뀔 수 있으므로 viewport는 프레임마다 계산합니다.
+    const meno::Vec2u framebuffer = renderer.framebufferSize();
+    meno::Camera2D leftView{.center = {200.f, 300.f}, .size = {400.f, 600.f}};
+    meno::Camera2D rightView{.center = {1800.f, 300.f}, .size = {400.f, 600.f}};
+    leftView.viewport = viewportInGame(framebuffer, {0.f, 0.f, 400.f, 600.f});
+    rightView.viewport = viewportInGame(framebuffer, {400.f, 0.f, 400.f, 600.f});
+    for (const meno::Camera2D& view : {leftView, rightView}) {
+        renderer.setCamera(view);
+        // 월드를 카메라마다 다시 그립니다.
+    }
+    // 두 화면의 경계선처럼 게임 화면에 붙는 UI는 HUD 카메라로 그립니다.
+    renderer.setCamera(hud);
+    renderer.drawRect({{398.f, 0.f}, {4.f, 600.f}});
+});
+```
+
+미니맵처럼 게임 화면의 일부에만 월드를 비추는 카메라도 같은 방법으로 `viewport`를 정합니다.
+
 ## 주의할 점
 
 - 카메라 값을 바꾼 뒤에는 `setCamera()`를 다시 호출해야 화면에 반영됩니다.
 - draw 핸들러 안에서 바꾼 카메라는 핸들러가 끝나면 되돌아갑니다. 따라서 월드 카메라는 update
   핸들러에서 정합니다.
+- `resetCamera()`의 화면 좌표는 띠를 따르지 않습니다. 게임 화면에 붙어 있어야 하는 UI는 HUD 카메라로
+  그립니다.
+- 띠는 `clearColor`로 채워집니다. 배경색이 띠와 다르면 배경을 사각형으로 그립니다.
 - `Camera2D`의 `rotation`은 스프라이트의 `rotation`과 반대로 보입니다. 같은 +45도라도 카메라를
   돌리면 화면 속 월드는 반시계 방향으로 돕니다.
 - 지정 초기화는 `center`, `size`, `zoom`, `rotation`, `viewport`, `fit` 순서로 씁니다.
@@ -1825,7 +1912,7 @@ Scene이 자동으로 그리는 GameObject에는 그 시점의 카메라 하나�
 
 이전 장: [9장. 리소스 관리](09-resources.md) · 다음 장: [11장. 스프라이트 애니메이션](11-animation.md)
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/11-animation.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/11-animation.md >>>
 # 11장. 스프라이트 애니메이션
 
 이 장에서는 프레임 여러 장을 이어 붙인 스프라이트 시트에서 한 프레임씩 골라 그리는 방식으로
@@ -1966,7 +2053,7 @@ int main() {
 
 이전 장: [10장. 카메라와 좌표](10-camera.md) · 다음 장: [12장. Game 없이 루프 직접 돌리기](12-application.md)
 
-<<< SeoulTech-Fiat-Lux/Meno@67a3979:docs/guide/12-application.md >>>
+<<< SeoulTech-Fiat-Lux/Meno@46f8934:docs/guide/12-application.md >>>
 # 12장. Game 없이 루프 직접 돌리기
 
 `Game`은 창, 렌더러, 리소스 캐시, Scene을 묶어 루프의 흐름을 정해 둡니다. 이 장에서는 그 아래 계층인

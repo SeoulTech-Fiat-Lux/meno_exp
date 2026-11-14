@@ -40,8 +40,9 @@ def main() -> None:
             parts.append(f"<<< {repo}@{commit[:7]}:{path} >>>\n{text.rstrip()}\n")
 
     bundle = "\n".join(parts)
-    output.write_text(bundle, encoding="utf-8")
     data = bundle.encode("utf-8")
+    # 바이트로 쓴다. write_text는 Windows에서 CRLF로 바꿔 써서, 같은 묶음이 OS마다 다른 sha256(동결 잠금)이 된다.
+    output.write_bytes(data)
     print(json.dumps({"condition": condition, "files": len(parts), "bytes": len(data),
                       "chars": len(bundle), "sha256": hashlib.sha256(data).hexdigest()}))
 
