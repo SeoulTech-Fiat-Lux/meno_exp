@@ -3,7 +3,7 @@
 meno 실험 저장소. 공개 저장소 SeoulTech-Fiat-Lux/Meno의 다음 이슈를 위한 자료를 둔다.
 
 - SeoulTech-Fiat-Lux/Meno#29 LLM 생성 비교 실험
-- SeoulTech-Fiat-Lux/Meno#30 성능 측정 (실행기·요약기와 결과만 둠. 측정 코드는 Meno 저장소에 있음. [benchmark/README.md](benchmark/README.md))
+- SeoulTech-Fiat-Lux/Meno#30 성능 측정 (측정 프로그램, 실행기, 결과 보고서를 모두 둠. Meno는 동결 커밋을 받아 고치지 않고 잼. [benchmark/README.md](benchmark/README.md))
 
 실험 설계와 정한 사항(D1–D12)은 [PLAN.md](PLAN.md)에 있다.
 
@@ -30,7 +30,7 @@ llm-comparison/
   tests/                    가짜 출력으로 하니스·채점·분석을 확인하는 테스트 (python3 tests/run_all.py)
   smoke/                    템플릿 점검용 프로그램
   runs/                     회차 결과 (사람마다 runs-*.jsonl, 회차별 폴더)
-benchmark/                  #30 성능 측정: bench.toml(조건), run.py(실행기), summarize.py(표·그래프), results/
+benchmark/                  #30 성능 측정: bench_app/(측정 프로그램), bench.toml(조건), run.py(실행기), 요약·그림·Tracy·보고서 도구, results/(결과와 보고서)
 ```
 
 ## 준비 (Ubuntu 24.04 또는 WSL2의 Ubuntu 24.04)
@@ -168,7 +168,8 @@ python3 grading/blind.py runs/main ~/blind ~/sealed/meno-exp-mapping.csv --grade
 ```
 
 - **블라인드 폴더 배포:** `~/blind`를 압축해 채점자에게 나눠 준다. `assignments.csv`에 ID별 채점자가 있다.
-- **채점 방법:** 채점자는 자기에게 배정된 `<ID>/`에서 `./game`을 실행하고, `sheet-<자기 이름>.csv`에 통과·실패를 적는다. 다 하면 `meta-<자기 이름>.csv`에 어느 조건 같은지(meno/sfml/모름), 확신(1~3), 채점에 쓴 분을 적는다.
+- **채점 방법:** 채점자는 자기에게 배정된 `<ID>/`에서 `./game`을 실행하고, `sheet-<자기 이름>.csv`에서 `how`가 `play`인 줄에만 통과·실패를 적는다 (`harness`·`excluded` 줄은 비워 둔다). 다 하면 `meta-<자기 이름>.csv`에 어느 조건 같은지(meno/sfml/모름), 확신(1~3), 채점에 쓴 분을 적는다.
+- **판정 기준:** 명세의 수치(px, 초, 볼륨 %, 색 코드)는 정밀하게 재지 않는다. 동작이 명세대로이고 수치가 눈에 띄게 다르지 않으면 통과, 눈에 띄게 다르면 실패로 적는다 (예: 공이 분명히 느림, 색이 분명히 다름). 애매하면 `note`에 적고, 합의 회의에서 정한다.
 - **대응표:** 채점이 끝날 때까지 아무도 열지 않는다. 가능하면 채점하지 않는 사람(지도교수·조교 등)이 보관한다.
 - **채점자 PC(WSL Ubuntu 24.04)에 필요한 런타임 패키지:**
 
