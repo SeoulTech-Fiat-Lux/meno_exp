@@ -126,7 +126,7 @@ API 키 대신 각자의 구독 로그인으로 CLI를 불러 모델에게 묻�
 | 사용자 설정 | `--safe-mode`(CLAUDE.md·플러그인·훅·MCP 끔), 빈 임시 폴더에서 실행 | `--ignore-user-config`, 빈 임시 폴더. 전역 `AGENTS.md`가 있으면 시작하지 않음 |
 | 왕복 이어 가기 | `--resume <마지막 성공 세션> --fork-session` (실패한 호출을 다시 보내도 대화가 겹치지 않음) | `codex exec resume <thread>` |
 | 추론 수준 | `--effort` 고정 | `model_reasoning_effort` 고정 |
-| 출력 상한 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | 줄 방법 없음. 잘린 답은 닫히지 않은 코드 블록으로 형식 오류가 됨 |
+| 출력 상한 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS`(추론 토큰 포함). 넘으면 Claude Code가 답 대신 오류를 내고 답은 세션에 남지 않으므로, 잘린 왕복으로 세고 답하지 못한 요청을 잘림 안내와 함께 다시 보낸다 | 줄 방법 없음. 잘린 답은 닫히지 않은 코드 블록으로 형식 오류가 됨 |
 | 토큰 | 입력(캐시 포함 원래 값), 캐시 읽기·쓰기, 출력, 그중 추론 | 입력, 캐시 읽기, 출력, 그중 추론 |
 | 비용 | 과금 없음. API였다면 얼마였는지(`cost_equiv_usd`)만 기록 | 과금 없음 |
 

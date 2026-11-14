@@ -324,6 +324,7 @@ class CliBackend:
         self.version = _first_line([self.exe, "--version"])
         self.system_prompt = (BASE / "prompts" / "system.md").read_text(encoding="utf-8").strip()
         self.sessions: dict[str, tuple[str, str]] = {}  # 회차 ID → (작업 폴더, 마지막으로 성공한 세션 ID)
+        self.unanswered: dict[str, str] = {}            # 회차 ID → 출력 상한에 걸려 답을 못 받은 요청
 
     def session(self, run: Run, messages: list[dict]) -> tuple[str, str | None, str]:
         """(작업 폴더, 이어 갈 세션 ID 또는 None, 이번에 보낼 user 메시지)."""
@@ -335,6 +336,10 @@ class CliBackend:
 
     def error_text(self, proc: subprocess.CompletedProcess) -> str | None:
         raise NotImplementedError
+
+    def is_truncation(self, error: str) -> bool:
+        """출력 상한에 걸린 것을 오류로 알리는 CLI가 있다. 일시 오류가 아니므로 다시 보내지 않고 잘린 답으로 다룬다."""
+        return False
 
     def call(self, command: list[str], prompt: str, cwd: str, env: dict | None = None):
         """CLI를 한 번 부른다. 프롬프트는 stdin으로 준다 (225KB라 명령줄 인자 한도를 넘음).
@@ -353,7 +358,7 @@ class CliBackend:
                 error = f"{self.executable} 응답 시간 초과 ({exp['llm_timeout_seconds']}초)"
                 proc = None
             elapsed = time.monotonic() - start
-            if error is None:
+            if error is None or (proc is not None and self.is_truncation(error)):
                 return proc, elapsed, retries
             if CONTEXT_ERROR.search(error):
                 raise RunFailure("context_window", error[:500])
@@ -390,9 +395,20 @@ class ClaudeCLI(CliBackend):
             return f"{data.get('result', '')} (status {data.get('api_error_status')}, {data.get('terminal_reason')})"
         return None
 
+    # Claude Code는 출력 상한(CLAUDE_CODE_MAX_OUTPUT_TOKENS)을 넘으면 잘린 답 대신 오류를 낸다. 상한은 추론 토큰도 포함한다.
+    OUTPUT_LIMIT = re.compile(r"exceeded the \d+ output token maximum", re.I)
+
+    def is_truncation(self, error: str) -> bool:
+        return bool(self.OUTPUT_LIMIT.search(error))
+
     def complete(self, run: Run, messages: list[dict]) -> Reply:
         exp = self.cfg["experiment"]
         cwd, resume, prompt = self.session(run, messages)
+        # 앞 왕복이 출력 상한에 걸렸으면 그 답은 세션에 남지 않았다(마지막 성공 세션에서 이어 가므로).
+        # 모델이 답하지 못한 요청을 이번 안내(prompts/truncated.md)와 함께 다시 보낸다.
+        unanswered = self.unanswered.pop(run.run_id, None)
+        if unanswered is not None and len(messages) > 1:
+            prompt = unanswered + "\n\n" + messages[-1]["content"]
         command = [self.exe, "-p", "--output-format", "json",
                    "--safe-mode",                  # CLAUDE.md, 스킬, 플러그인, 훅, MCP, 출력 스타일을 끔. 구독 로그인은 그대로
                    "--tools", "",                  # 도구 모두 끔
@@ -408,13 +424,20 @@ class ClaudeCLI(CliBackend):
         env.pop("ANTHROPIC_API_KEY", None)  # 키가 있으면 구독 대신 API로 과금될 수 있다
         proc, elapsed, retries = self.call(command, prompt, cwd, env)
         data = json.loads(proc.stdout)
-        self.sessions[run.run_id] = (cwd, data["session_id"])
+        truncated = bool(data.get("is_error"))  # call()이 돌려준 오류는 출력 상한 초과뿐이다
+        if truncated:
+            # 세션은 앞의 성공 지점에 그대로 둔다 (첫 왕복이면 세션이 없어 다음에 새로 시작).
+            self.unanswered[run.run_id] = prompt
+            if resume is None:
+                self.sessions.pop(run.run_id, None)
+        else:
+            self.sessions[run.run_id] = (cwd, data["session_id"])
         usage = data.get("usage", {})
         cache_read = usage.get("cache_read_input_tokens") or 0
         cache_write = usage.get("cache_creation_input_tokens") or 0
-        stop = data.get("stop_reason")
+        stop = "max_tokens" if truncated else data.get("stop_reason")
         return Reply(
-            content=data.get("result") or "",
+            content="" if truncated else data.get("result") or "",
             model=",".join(sorted(data.get("modelUsage", {}))) or run.model["model"],
             # Anthropic의 input_tokens는 캐시 밖의 토큰만 센다. 비교 지표는 캐시와 무관한 원래 입력 토큰이므로 더한다.
             prompt_tokens=(usage.get("input_tokens") or 0) + cache_read + cache_write,
@@ -426,7 +449,8 @@ class ClaudeCLI(CliBackend):
             latency_s=elapsed,
             extra={"client": self.client, "client_version": self.version, "session_id": data["session_id"],
                    "cost_equiv_usd": data.get("total_cost_usd"), "cli_retries": retries,
-                   "num_turns": data.get("num_turns")})
+                   "num_turns": data.get("num_turns")}
+                  | ({"output_limit_error": data.get("result", "")[:300]} if truncated else {}))
 
 
 class CodexCLI(CliBackend):
@@ -721,7 +745,7 @@ def main() -> None:
     games = cfg["games"].get(args.games, None) or args.games.split(",")
     conditions = args.conditions.split(",")
     models = cfg["models"]
-    if args.games == "pilot" and args.models == "all" and cfg["games"].get("pilot_models"):
+    if args.games == "pilot" and args.models == "all" and not args.mock and cfg["games"].get("pilot_models"):
         args.models = ",".join(cfg["games"]["pilot_models"])  # 시범 실행은 정해 둔 모델로만
     if args.mock:
         models = [{"tier": "mock", "id": "mock", "params": {}}]
