@@ -11,6 +11,7 @@ bench.toml       N 목록, 대상, 반복 수, 워밍업·기록 프레임 수, 
 run.py           Meno를 Release로 빌드하고 (대상, N, 반복)마다 새 프로세스로 실행, 환경과 함께 기록
 summarize.py     평균·p50·p99 표(summary.md, summary.csv)와 그래프(frametime.png)
 figures.py       배칭 판단용 그림 4장과 그 값 표(figures/)
+tracy.py         Tracy 캡처 도구 빌드, 캡처, 구간별 비용 표·그림(tracy/)
 results/<날짜>-<meno 커밋>/   env.json, runs.jsonl, raw/<대상>-<N>-rep<k>.csv, 요약 파일, tracy/
 ```
 
@@ -134,13 +135,49 @@ python3 figures.py results/<날짜>-<meno 커밋>     # summarize.py 다음에
 - **색:** 대상 3개까지만 색을 쓴다(색각 이상에서도 모든 쌍이 구분되는 범위). 더 늘리면 스크립트가 멈추므로 그림을 나눈다.
 - **글자:** 그림 글자는 영어다. WSL에 한글 글꼴이 없으면 깨진다.
 
-## Tracy 병목 분석
+## Tracy 병목 분석 (tracy.py)
 
-- 측정과 따로, `-DMENO_ENABLE_TRACY=ON` 빌드로 `meno-object` 대상을 N = 1000, 10000 정도에서 캡처한다.
-- `.tracy` 캡처 파일은 크므로 커밋하지 않는다(`.gitignore`). 대신 `results/<…>/tracy/`에 화면 캡처(png)와 `notes.md`(어느 구간이 몇 ms, 무엇이 병목인지)를 둔다.
+측정과 따로, Tracy를 켠 빌드로 `meno-object`를 캡처해 프레임 시간이 어느 구간에 쓰이는지 본다. 이 빌드의 수치는 측정 표에 쓰지 않는다(계측 비용이 섞임). 조건은 `bench.toml`의 `[tracy]`(N = 1000, 10000, 워밍업 120, 기록 600프레임).
+
+### Meno 쪽에서 맞출 것
+
+- **버전:** Tracy는 계측되는 쪽과 캡처 도구의 버전이 같아야 연결된다. Meno의 FetchContent 태그를 `bench.toml`의 `[tracy].version`(`v0.15.0`)과 같게 고정한다.
+- **옵션:** `MENO_ENABLE_TRACY=ON`일 때만 `TRACY_ENABLE`을 정의한다. 실행 파일 명령과 출력은 측정과 같다(실행 파일 약속).
+- **프레임 구간:** 프레임 하나를 통째로(갱신·그리기·`display()`) `MENO_PROFILE_SCOPE("frame")`으로 감싸고, 끝에 `FrameMark`를 부른다. 보고서는 `frame` 구간으로 워밍업 프레임을 잘라 내고 프레임당 비용을 낸다. 없으면 보고서가 멈춘다.
+- **구간 단위:** 구간은 단계마다 하나다. 스프라이트마다 구간을 열지 않는다(N = 10000이면 프레임마다 1만 개가 쌓여 캡처가 커지고 계측 비용이 결과를 바꾼다).
+- **구간:** `MENO_PROFILE_SCOPE("이름")`으로 감싼다. 이름은 자유지만 아래처럼 `영역.동작`으로 짓기를 권한다. 구간끼리 겹쳐도 된다(보고서는 self time을 쓴다).
+  - `bench.move`(공통 이동 함수), `scene.update`, `scene.render`(장면 순회), `renderer.draw`(그리기 호출), `window.display`
+
+### 실행
+
+```bash
+python3 tracy.py tools                    # 처음 한 번. Tracy 캡처 도구를 work/에 빌드 (cmake, 인터넷 필요)
+```
+
+```bash
+python3 tracy.py capture --meno ~/Meno    # Tracy 빌드 → N마다 캡처 → CSV 내보내기 → 보고서
+```
+
+```bash
+python3 tracy.py capture --mock           # Tracy 없이 보고서 흐름 점검 (results-mock/)
+```
+
+- **렌더러:** `run.py`와 같은 확인을 거친다(WSL은 `GALLIUM_DRIVER` 등 설정, "측정 환경").
+- **결과 폴더:** `results/<날짜>-<meno 커밋>/tracy/`. 같은 날짜·커밋의 측정 결과 옆에 놓인다.
+
+| 파일 | 내용 | 커밋 |
+|---|---|---|
+| `<대상>-<N>.tracy` | 캡처 원본. Tracy 프로그램(같은 버전)으로 연다 | 안 함 (크다) |
+| `zones-<N>.csv`, `frames-<N>.csv` | 구간 호출마다 한 줄(`tracy-csvexport -u -e`, self time), `frame` 구간 호출마다 한 줄(`-u -f frame`). N = 10000에서 각각 약 4천 줄, 7백 줄 | 함 |
+| `zones.md`, `zones.png` | 프레임당 구간별 비용(ms, %), N이 커질 때 늘어난 비용. 다시 만들어진다 | 함 |
+| `notes.md` | 사람이 쓰는 분석(캡처 조건, 관찰, 판단). 없을 때만 양식을 만든다 | 함 |
+
+- **읽는 법:** 워밍업을 뺀 기록 프레임만 센다. 구간 비용은 self time(그 구간에서 자식 구간을 뺀 시간)이라 더하면 프레임 시간이 된다. `not instrumented`는 `frame` 구간의 self time, 곧 어느 하위 구간에도 속하지 않은 시간이다. 이게 크면 구간이 빠진 곳이 있다. 구간 합이 프레임 평균과 5% 넘게 다르면 `zones.md` 위에 주의가 붙는다.
+- **배칭 판단:** `zones.md`의 "늘어난 비용"에서 N에 비례해 늘어나는 구간 중 그리기 호출에 해당하는 것(`renderer.draw` 등)이 배칭으로 줄어든다. 장면 순회·변환 갱신은 배칭으로 줄지 않는다.
+- **화면 캡처:** Tracy 프로그램에서 본 타임라인·통계 화면은 png로 `tracy/`에 두고 `notes.md`에 설명을 단다.
 
 ## 이슈 체크리스트와의 대응
 
 - **측정 실행 파일:** Meno 저장소 `benchmarks/`. 이 폴더의 약속을 따른다.
 - **결과 표와 그래프:** `summarize.py`가 만든 `summary.md`, `frametime.png`를 Meno의 `docs/benchmark.md`로 옮긴다.
-- **Tracy로 병목 분석:** `results/<…>/tracy/notes.md`.
+- **Tracy로 병목 분석:** `tracy.py`가 만든 `results/<…>/tracy/zones.md`, `zones.png`와 사람이 쓴 `notes.md`.
