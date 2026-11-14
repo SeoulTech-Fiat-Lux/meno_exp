@@ -27,12 +27,10 @@ import random
 import subprocess
 import sys
 import time
-import tomllib
 from pathlib import Path
 
-import run as runner  # 같은 폴더의 run.py: 렌더러 확인, git 정보, 빌드를 그대로 쓴다
-
-HERE = runner.HERE
+import style
+from common import HERE, check_renderer, cmake_build, git_info, gl_info, load_config, run_env
 
 
 def tool_dir(version: str) -> Path:
@@ -48,13 +46,10 @@ def build_tools(cfg: dict) -> Path:
     src = out / "src"
     if not src.exists():
         subprocess.run(["git", "clone", "--depth", "1", "--branch", version, cfg["repo"], str(src)], check=True)
-    jobs = str(os.cpu_count() or 4)
     for name in ("capture", "csvexport"):
-        build = out / f"build-{name}"
         # 캡처 도구는 GUI가 필요 없다. NO_ISA_EXTENSIONS: 다른 PC로 옮겨도 돌게 한다.
-        subprocess.run(["cmake", "-S", str(src / name), "-B", str(build), "-DCMAKE_BUILD_TYPE=Release",
-                        "-DNO_ISA_EXTENSIONS=ON"], check=True)
-        subprocess.run(["cmake", "--build", str(build), "-j", jobs], check=True)
+        cmake_build(src / name, out / f"build-{name}", ["-DCMAKE_BUILD_TYPE=Release", "-DNO_ISA_EXTENSIONS=ON"],
+                    os.cpu_count() or 4)
     (out / "bin").mkdir(exist_ok=True)
     for name, dest in (("capture", capture), ("csvexport", export)):
         built = next((out / f"build-{name}").glob(f"tracy-{name}"), None) or next((out / f"build-{name}").rglob(f"tracy-{name}"))
@@ -209,14 +204,13 @@ def figure(out: Path, counts: list[int], stacks: dict, labels: list[str]) -> Non
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        import figures as style  # 같은 폴더의 figures.py: 팔레트와 축 서식
     except ImportError:
         print("matplotlib가 없어 그림은 건너뜀 (pip install -r requirements.txt)")
         return
     # 구간 색: 이름 붙은 구간은 팔레트 순서대로, 묶음 둘은 회색 계열로 낮춘다. 막대가 N마다 하나라 이웃한 칸만 구분되면 된다.
-    palette = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
-    colors = {z: palette[i % len(palette)] for i, z in enumerate(labels[:-2])}
-    colors |= {"other zones": "#b5b3ad", "not instrumented": "#dddbd5"}
+    style.apply(plt)
+    colors = {z: style.SERIES[i % len(style.SERIES)] for i, z in enumerate(labels[:-2])}
+    colors |= {"other zones": style.MUTED[0], "not instrumented": style.MUTED[1]}
     fig, axes = plt.subplots(len(counts), 1, figsize=(10, 1.0 + 0.9 * len(counts)), squeeze=False)
     for ax, n in zip(axes[:, 0], counts):
         frame_ms, parts = stacks[n]
@@ -226,9 +220,8 @@ def figure(out: Path, counts: list[int], stacks: dict, labels: list[str]) -> Non
             ax.barh(0, w, left=left, height=0.6, color=colors[z], edgecolor=style.SURFACE, linewidth=2,
                     label=z if n == counts[0] else None)
             if w >= 6:
-                dark = z in ("other zones", "not instrumented") or colors[z] in ("#eda100", "#e87ba4", "#1baf7a")
                 ax.text(left + w / 2, 0, f"{w:.0f}%", ha="center", va="center", fontsize=8, fontweight="bold",
-                        color=style.INK if dark else style.SURFACE)
+                        color=style.text_on(colors[z]))
             left += w
         ax.set(xlim=(0, 100), yticks=[0], yticklabels=[f"N={n:,}\n{frame_ms:.2f} ms"])
         ax.grid(axis="y", visible=False)
@@ -294,7 +287,7 @@ def main() -> None:
         p.add_argument("--config", type=Path, default=HERE / "bench.toml")
     args = ap.parse_args()
 
-    cfg = tomllib.loads(args.config.read_text(encoding="utf-8"))
+    cfg = load_config(args.config)
     tcfg = cfg["tracy"]
     if args.cmd == "tools":
         print(f"도구: {build_tools(tcfg)}")
@@ -306,20 +299,20 @@ def main() -> None:
     if not args.mock and not args.meno:
         ap.error("--meno가 필요하다 (흐름 점검만 하려면 --mock)")
     meno = args.meno.expanduser().resolve() if args.meno else None
-    commit = runner.git_info(meno)["commit"][:7] if meno else "mock"
+    commit = git_info(meno)["commit"][:7] if meno else "mock"
     out = args.out or HERE / ("results-mock" if args.mock else "results") / f"{dt.date.today():%Y%m%d}-{commit}" / "tracy"
     out.mkdir(parents=True, exist_ok=True)
     if args.mock:
         for n in tcfg["counts"]:
             mock_capture(tcfg, out, n)
     else:
-        env = os.environ | cfg["run"].get("env", {})
-        runner.check_renderer(runner.gl_info(env), args.allow_software)
+        env = run_env(cfg)
+        check_renderer(gl_info(env), args.allow_software)
         bin_dir = build_tools(tcfg)
         binary = args.bin
         if not binary:
             build_dir = HERE / "work" / f"build-tracy-{commit}"
-            runner.build(meno, build_dir, {"cmake_args": tcfg["cmake_args"], "jobs": cfg["build"]["jobs"]})
+            cmake_build(meno, build_dir, tcfg["cmake_args"], cfg["build"]["jobs"])
             binary = build_dir / cfg["build"]["binary"]
         for n in tcfg["counts"]:
             capture_one(bin_dir, Path(binary), cfg["run"], tcfg, env, out, n)

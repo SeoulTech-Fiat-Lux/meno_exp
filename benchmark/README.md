@@ -9,13 +9,19 @@
 ```
 bench.toml       N 목록, 대상, 반복 수, 워밍업·기록 프레임 수, 실행 명령
 run.py           Meno를 Release로 빌드하고 (대상, N, 반복)마다 새 프로세스로 실행, 환경과 함께 기록
-summarize.py     평균·p50·p99 표(summary.md, summary.csv)와 그래프(frametime.png)
+summarize.py     평균·p50·p99 표(summary.md, summary.csv)와 판정 결과(summary.json)
 figures.py       배칭 판단용 그림 4장과 그 값 표(figures/)
 tracy.py         Tracy 캡처 도구 빌드, 캡처, 구간별 비용 표·그림(tracy/)
 vsync_check.py   수직 동기화가 정말 꺼지는지 확인 (vsync_check/ 프로그램 빌드·실행)
 report.py        Meno docs/benchmark.md 초안과 #30 종료 댓글 초안(report/)
+common.py        공용: 설정, 측정 환경(렌더러·git·빌드), 결과 폴더 읽기(대상 순서 등)
+stats.py         공용: 백분위, 수직 동기화 판정 (입출력 없는 계산)
+style.py         공용: 그림 색과 서식 (figures.py, tracy.py)
 results/<날짜>-<meno 커밋>/   env.json, runs.jsonl, raw/<대상>-<N>-rep<k>.csv, 요약 파일, tracy/
 ```
+
+- **의존 방향:** 실행 도구(`run.py`, `tracy.py`, `vsync_check.py`)와 분석 도구(`summarize.py`, `figures.py`, `report.py`)는 서로를 import하지 않고 `common.py`, `stats.py`, `style.py`만 쓴다. 분석 도구끼리는 결과 폴더의 파일로만 주고받는다.
+- **판정은 JSON으로:** `report.py`는 경고를 낼 때 `summary.md`의 문장이 아니라 `summary.json`(수직 동기화에 묶인 대상, 실패한 측정)을 읽는다. 사람이 읽는 문장은 고쳐도 된다.
 
 ## 실행 파일 약속 (Meno 쪽에서 맞출 것)
 
@@ -98,7 +104,7 @@ python3 vsync_check.py --out results/<날짜>-<meno 커밋>   # 처음엔 SFML �
 - **판정:** 끔의 중앙값이 한 주사율 주기의 2% 안이고 p10도 3% 안이면 실패다. 켬은 대조군으로, 측정용 덮어쓰기(`vblank_mode=0` 등) 없이 돌려 이 환경에서 동기화가 실제로 걸리는지 함께 보고한다.
 - **기록:** `--out`을 주면 결과 폴더에 `vsync.json`이 남고, `report.py`가 문서에 옮긴다.
 - **확인한 결과 (2026-11-14, RTX 5070 Ti, WSLg d3d12):** 통과. 끔 중앙값 1.30 ms. WSLg의 d3d12는 vsync 요청 자체를 지원하지 않아("Setting vertical sync not supported") 켬도 1.37 ms로, 프레임이 늘 동기화 없이 돈다.
-- **측정 뒤 확인:** `summarize.py`도 같은 기준으로 본다. 한 대상이 서로 다른 N 두 개 이상에서 같은 주사율 주기에 머물면 `summary.md` 맨 위에 경고를 붙인다(한 N에서만 주기 근처인 것은 우연일 수 있어 넘어간다).
+- **측정 뒤 확인:** `summarize.py`도 같은 기준으로 본다. 한 대상이 서로 다른 N 두 개 이상에서 같은 주사율 주기에 머물면 `summary.md` 맨 위에 경고를 붙이고 `summary.json`의 `vsync_locked`에 남긴다(한 N에서만 주기 근처인 것은 우연일 수 있어 넘어간다).
 - **실패하면:** WSL은 위 `GALLIUM_DRIVER` 설정을 다시 확인한다. 리눅스 기본 설치는 NVIDIA 설정의 "Sync to VBlank"를 끄거나, 화면 합성기(GNOME 등)가 없는 세션에서 잰다.
 
 ### 측정할 때

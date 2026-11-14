@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import csv
-import json
 import math
 import sys
 from collections import defaultdict
@@ -26,34 +25,22 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter  # noqa: E402
 
-# dataviz 기본 팔레트(밝은 모드). 대상 3개까지는 모든 쌍이 색각 이상에서도 구분된다고 검증된 앞 세 칸만 쓴다.
-SURFACE = "#fcfcfb"
-INK = "#0b0b0b"
-INK_2 = "#52514e"
-GRID = "#e4e3df"
-SERIES = ["#2a78d6", "#eb6834", "#1baf7a"]
-BUDGETS = [(1000 / 60, "60 fps"), (1000 / 30, "30 fps")]
+import style  # noqa: E402
+from common import ok_runs, raw_path, read_frame_ms, read_runs, target_order  # noqa: E402
+from stats import percentile  # noqa: E402
+from style import INK, INK_2, SURFACE  # noqa: E402
 
-plt.rcParams.update({
-    "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
-    "axes.edgecolor": GRID, "axes.labelcolor": INK_2, "xtick.color": INK_2, "ytick.color": INK_2,
-    "text.color": INK, "axes.grid": True, "grid.color": GRID, "grid.linewidth": 0.8,
-    "axes.spines.top": False, "axes.spines.right": False, "font.size": 10,
-    "axes.titlesize": 11, "axes.titleweight": "bold", "axes.titlelocation": "left",
-    "lines.linewidth": 2, "lines.markersize": 5, "legend.frameon": False,
-})
+BUDGETS = [(1000 / 60, "60 fps"), (1000 / 30, "30 fps")]
 
 
 def load(out: Path) -> tuple[list[str], list[int], dict]:
     rows = list(csv.DictReader((out / "summary.csv").open(newline="")))
     by = {(r["target"], int(r["count"])): {k: float(v) for k, v in r.items() if k.endswith(("_ms", "_min", "_max"))}
           for r in rows}
-    env = json.loads((out / "env.json").read_text(encoding="utf-8")) if (out / "env.json").exists() else {}
-    order = env.get("config", {}).get("sweep", {}).get("targets", [])
-    present = {t for t, _ in by}
-    targets = [t for t in order if t in present] + sorted(present - set(order))
-    if len(targets) > len(SERIES):
-        sys.exit(f"대상이 {len(targets)}개다. 색 구분이 검증된 것은 {len(SERIES)}개까지라 그림을 나눠야 한다")
+    targets = target_order(out, {t for t, _ in by})
+    if len(targets) > style.MAX_OVERLAID:
+        sys.exit(f"대상이 {len(targets)}개다. 겹쳐 그릴 때 색 구분이 검증된 것은 {style.MAX_OVERLAID}개까지라 "
+                 "그림을 나눠야 한다")
     counts = sorted({n for _, n in by})
     return targets, counts, by
 
@@ -162,7 +149,7 @@ def fig_stages(out: Path, targets, counts, by, colors, notes: list[str]) -> None
                edgecolor=SURFACE, linewidth=2)
         for i, (b, h) in enumerate(zip(bottom, shares[s])):
             if h >= 7:
-                ax.text(i, b + h / 2, f"{h:.0f}%", ha="center", va="center", color=SURFACE if t != targets[-1] else INK,
+                ax.text(i, b + h / 2, f"{h:.0f}%", ha="center", va="center", color=style.text_on(colors[t]),
                         fontsize=8, fontweight="bold")
         bottom = [b + h for b, h in zip(bottom, shares[s])]
     ax.set_xticks(list(x), [f"{n:,}" for n in ns])
@@ -209,8 +196,7 @@ def fig_per_sprite(out: Path, targets, counts, by, colors, notes: list[str]) -> 
 
 
 def fig_distribution(out: Path, targets, counts, colors, notes: list[str]) -> None:
-    runs = [json.loads(l) for l in (out / "runs.jsonl").read_text(encoding="utf-8").splitlines()]
-    ok = {(r["target"], r["count"], r["rep"]) for r in runs if r["ok"]}
+    ok = ok_runs(read_runs(out))
     picks = [n for n in (1000, 10000) if n in counts] or counts[-2:]
     fig, axes = plt.subplots(1, len(picks), figsize=(5.5 * len(picks), 4.2), squeeze=False)
     notes += ["## 4. 프레임 시간 분포 (반복을 합친 값, ms)", "", "| N | 대상 | p50 | p99 | 최대 | p99/p50 |",
@@ -218,10 +204,9 @@ def fig_distribution(out: Path, targets, counts, colors, notes: list[str]) -> No
     for ax, n in zip(axes[0], picks):
         for t in targets:
             values = []
-            for target, count, rep in ok:
+            for target, count, rep in sorted(ok):
                 if target == t and count == n:
-                    with (out / "raw" / f"{t}-{n}-rep{rep}.csv").open(newline="") as f:
-                        values += [float(r["frame_ms"]) for r in csv.DictReader(f)]
+                    values += read_frame_ms(raw_path(out, t, n, rep))
             if not values:
                 continue
             values.sort()
@@ -229,7 +214,7 @@ def fig_distribution(out: Path, targets, counts, colors, notes: list[str]) -> No
             # 초과 비율(그 시간보다 느린 프레임의 비율). 로그 축이라 드물게 튀는 프레임(꼬리)이 잘 보인다.
             ax.step(values, [(k - i - 1) / k if i < k - 1 else 1 / k for i in range(k)], where="post",
                     color=colors[t], label=t)
-            p50, p99 = values[min(k - 1, int(0.5 * k))], values[min(k - 1, int(0.99 * k))]
+            p50, p99 = percentile(values, 0.50), percentile(values, 0.99)
             notes.append(f"| {n:,} | {t} | {p50:.3f} | {p99:.3f} | {values[-1]:.3f} | {p99 / p50:.2f} |")
         ax.axhline(0.01, color=INK_2, linewidth=1, linestyle=(0, (4, 3)))
         ax.annotate("p99 (1% of frames slower)", (1, 0.01), xycoords=("axes fraction", "data"), xytext=(-4, 4),
@@ -249,8 +234,9 @@ def fig_distribution(out: Path, targets, counts, colors, notes: list[str]) -> No
 
 def main() -> None:
     out = Path(sys.argv[1])
+    style.apply(plt)
     targets, counts, by = load(out)
-    colors = dict(zip(targets, SERIES))
+    colors = dict(zip(targets, style.SERIES))
     (out / "figures").mkdir(exist_ok=True)
     notes = [f"# 그림 요약: {out.name}", "", "값은 반복 사이의 중앙값(4번은 반복을 합친 값)이다. 그림은 figures/*.png.", ""]
     fig_budget(out, targets, counts, by, colors, notes)

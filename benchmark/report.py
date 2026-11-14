@@ -16,14 +16,13 @@
 from __future__ import annotations
 
 import csv
-import json
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+from common import HERE, is_software, read_json
 TODO = "(작성)"
 IMAGES = "images/benchmark"
 
@@ -55,14 +54,14 @@ def filled_notes(notes: str) -> str:
     return "\n\n".join(parts)
 
 
-def warnings(out: Path, env: dict, vsync: dict, summary: str, notes_ok: bool) -> list[str]:
+def warnings(out: Path, env: dict, vsync: dict, verdicts: dict, notes_ok: bool) -> list[str]:
     w = []
     if out.parent.name == "results-mock" or out.name.endswith("-mock"):
         w.append("가짜(mock) 데이터다. 실제 측정 결과로 다시 만든다.")
     renderer = env.get("gl_renderer", "")
     if not renderer:
         w.append("env.json에 GL 렌더러가 없다. GPU에서 잰 것인지 알 수 없다.")
-    elif any(s in renderer.lower() for s in ("llvmpipe", "softpipe", "swrast")):
+    elif is_software(renderer):
         w.append(f"소프트웨어 렌더러({renderer})로 쟀다. GPU 성능이 아니다.")
     if env.get("meno", {}).get("dirty"):
         w.append("meno를 고친 채로 빌드했다(dirty). 어느 코드인지 재현할 수 없다.")
@@ -70,14 +69,14 @@ def warnings(out: Path, env: dict, vsync: dict, summary: str, notes_ok: bool) ->
         w.append("vsync.json이 없다. vsync_check.py --out <결과 폴더>로 수직 동기화가 꺼지는지 확인한다.")
     elif not vsync.get("ok"):
         w.append(f"수직 동기화 확인 실패: {vsync.get('message', '')}")
-    if "수직 동기화에 묶인" in summary:
-        w.append("summary.md에 수직 동기화에 묶인 대상이 있다.")
+    if verdicts.get("vsync_locked"):
+        w.append(f"수직 동기화에 묶인 대상이 있다: {'; '.join(verdicts['vsync_locked'])}")
     if not env.get("meno", {}).get("commit"):
         w.append("env.json에 meno 커밋이 없다. 어느 meno로 쟀는지 알 수 없다.")
     if not notes_ok:
         w.append("tracy/notes.md의 관찰·판단이 비어 있다.")
-    if "실패해 빠진" in summary:
-        w.append("실패해 빠진 측정이 있다(summary.md 끝). 표의 반복 수가 모자란다.")
+    if verdicts.get("failed"):
+        w.append(f"실패해 빠진 측정 {len(verdicts['failed'])}개가 있다(summary.md 끝). 표의 반복 수가 모자란다.")
     return w
 
 
@@ -95,15 +94,14 @@ def key_numbers(out: Path, targets: list[str]) -> list[str]:
 
 def main() -> None:
     out = Path(sys.argv[1]).resolve()
-    if not (out / "summary.md").exists() or not (out / "figures" / "figures.md").exists():
-        sys.exit("summary.md나 figures/figures.md가 없다. summarize.py와 figures.py를 먼저 돌린다")
-    env = json.loads(read(out / "env.json") or "{}")
-    vsync = json.loads(read(out / "vsync.json") or "{}")
+    if not (out / "summary.json").exists() or not (out / "figures" / "figures.md").exists():
+        sys.exit("summary.json이나 figures/figures.md가 없다. summarize.py와 figures.py를 먼저 돌린다")
+    env, vsync, verdicts = read_json(out / "env.json"), read_json(out / "vsync.json"), read_json(out / "summary.json")
     summary, figs = read(out / "summary.md"), read(out / "figures" / "figures.md")
     tracy_dir = out / "tracy"
     zones, notes = read(tracy_dir / "zones.md"), read(tracy_dir / "notes.md")
     sweep = env.get("config", {}).get("sweep", {})
-    targets = sweep.get("targets", [])
+    targets = verdicts["targets"]
     meno = env.get("meno", {})
     exp_commit = subprocess.run(["git", "-C", str(HERE), "rev-parse", "--short", "HEAD"],
                                 capture_output=True, text=True).stdout.strip()
@@ -119,7 +117,7 @@ def main() -> None:
     img = lambda name, alt: f"![{alt}]({IMAGES}/{name})"
 
     notes_text = filled_notes(notes)
-    warn = warnings(out, env, vsync, summary, bool(notes_text))
+    warn = warnings(out, env, vsync, verdicts, bool(notes_text))
     head = []
     if warn:
         head = ["> **초안 경고: 아래가 해결되기 전에는 결과로 쓰지 않는다.**", ">",

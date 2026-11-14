@@ -14,7 +14,6 @@ Meno 저장소의 벤치마크 실행 파일을 Release로 빌드하고, bench.t
 from __future__ import annotations
 
 import argparse
-import csv
 import datetime as dt
 import json
 import math
@@ -24,55 +23,10 @@ import random
 import subprocess
 import sys
 import time
-import tomllib
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-
-
-def sh(cmd: list[str], **kw) -> str:
-    """환경 기록용. 도구가 없거나 실패해도 멈추지 않고 빈 문자열을 돌려준다."""
-    try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=30, **kw).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        return ""
-
-
-def git_info(repo: Path) -> dict:
-    return {
-        "commit": sh(["git", "-C", str(repo), "rev-parse", "HEAD"]),
-        "describe": sh(["git", "-C", str(repo), "describe", "--tags", "--always", "--dirty"]),
-        # 고친 채로 잰 결과는 어느 코드인지 재현할 수 없으므로 표시해 둔다.
-        "dirty": bool(sh(["git", "-C", str(repo), "status", "--porcelain"])),
-    }
-
-
-SOFTWARE_RENDERERS = ("llvmpipe", "softpipe", "swrast")
-
-
-def gl_info(env: dict) -> dict:
-    """glxinfo -B에서 렌더러·버전만 뽑는다. 전체 출력에는 남은 비디오 메모리처럼 실행마다 바뀌는 값이
-    있어서, 이어서 돌릴 때 같은 환경인지 비교하는 데는 이 값들만 쓴다."""
-    # 실행 파일과 같은 환경 변수로 물어야 실행 파일이 실제로 쓸 렌더러가 나온다(WSL의 GALLIUM_DRIVER 등).
-    raw = sh(["glxinfo", "-B"], env=env)
-    pick = lambda name: next((l.split(":", 1)[1].strip() for l in raw.splitlines()
-                              if l.strip().startswith(name + ":")), "")
-    return {"gl_renderer": pick("OpenGL renderer string"), "gl_version": pick("OpenGL version string"),
-            "gl_vendor": pick("OpenGL vendor string"), "glxinfo": raw}
-
-
-def check_renderer(gl: dict, allow_software: bool) -> None:
-    """GPU에서 재는지 측정 전에 확인한다. 소프트웨어 렌더러의 수치는 GPU 성능이 아니다."""
-    renderer = gl["gl_renderer"]
-    if not renderer:
-        sys.exit("GL 렌더러를 알 수 없다. glxinfo가 없거나 화면(DISPLAY)에 연결되지 않았다.\n"
-                 "  sudo apt-get install -y mesa-utils 후 glxinfo -B 로 확인한다 (README의 '측정 환경')")
-    print(f"GL 렌더러: {renderer}")
-    if any(s in renderer.lower() for s in SOFTWARE_RENDERERS):
-        if not allow_software:
-            sys.exit(f"소프트웨어 렌더러({renderer})라 GPU 성능을 잴 수 없다. README의 '측정 환경'을 따르거나, "
-                     "흐름만 볼 때는 --allow-software")
-        print("경고: 소프트웨어 렌더러로 잰다. 이 결과는 표에 쓰지 않는다")
+from common import (HERE, check_renderer, cmake_build, git_info, gl_env, gl_info, load_config, raw_path,
+                    read_frame_ms, run_env, sh)
 
 
 def environment(meno: Path | None, build_dir: Path | None, gl: dict) -> dict:
@@ -88,9 +42,7 @@ def environment(meno: Path | None, build_dir: Path | None, gl: dict) -> dict:
         "cmake": sh(["cmake", "--version"]).splitlines()[:1],
         "wsl": "microsoft" in platform.release().lower(),
         "display": os.environ.get("DISPLAY", ""),
-        # 렌더러 선택에 영향을 주는 변수. WSL에서는 이 값이 어느 GPU로 쟀는지를 정한다.
-        "gl_env": {k: v for k, v in sorted(os.environ.items())
-                   if k.startswith(("GALLIUM_", "MESA_", "LIBGL_", "__GL_")) or k == "vblank_mode"},
+        "gl_env": gl_env(dict(os.environ)),
         "cpu_governor": sh(["cat", "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"]),
     }
     if meno:
@@ -100,11 +52,6 @@ def environment(meno: Path | None, build_dir: Path | None, gl: dict) -> dict:
         env["cmake_cache"] = {l.split(":", 1)[0]: l.split("=", 1)[1] for l in cache
                               if l.startswith(("CMAKE_BUILD_TYPE:", "CMAKE_CXX_COMPILER:", "MENO_BUILD_BENCHMARKS:"))}
     return env
-
-
-def build(meno: Path, build_dir: Path, cfg: dict) -> None:
-    subprocess.run(["cmake", "-S", str(meno), "-B", str(build_dir), *cfg["cmake_args"]], check=True)
-    subprocess.run(["cmake", "--build", str(build_dir), "-j", str(cfg["jobs"])], check=True)
 
 
 def plan(sweep: dict) -> list[dict]:
@@ -124,9 +71,7 @@ def key(job: dict) -> tuple:
 
 def read_frames(path: Path, expected: int) -> list[float]:
     """실행 파일 약속: 머리글 frame,frame_ms 와 기록 프레임 수만큼의 줄."""
-    with path.open(newline="") as f:
-        rows = list(csv.DictReader(f))
-    values = [float(r["frame_ms"]) for r in rows]
+    values = read_frame_ms(path)
     if len(values) != expected:
         raise ValueError(f"프레임 {len(values)}개 (기대 {expected}개)")
     if not all(math.isfinite(v) and v > 0 for v in values):
@@ -190,7 +135,7 @@ def main() -> None:
                     help="소프트웨어 렌더러(llvmpipe 등)에서도 돌린다. 흐름 점검용이고 결과는 표에 쓰지 않는다")
     args = ap.parse_args()
 
-    cfg = tomllib.loads(args.config.read_text(encoding="utf-8"))
+    cfg = load_config(args.config)
     if args.reps:
         cfg["sweep"]["reps"] = args.reps
     if not args.mock and not args.meno:
@@ -216,7 +161,7 @@ def main() -> None:
 
     # 빌드에 몇 분 쓰기 전에 렌더러부터 확인한다.
     sweep, run_cfg = cfg["sweep"], cfg["run"]
-    proc_env = os.environ | run_cfg.get("env", {})
+    proc_env = run_env(cfg)
     gl = {} if args.mock else gl_info(proc_env)
     if not args.mock:
         check_renderer(gl, args.allow_software)
@@ -224,7 +169,7 @@ def main() -> None:
     build_dir = HERE / "work" / f"build-{commit}"
     binary = args.bin
     if not args.mock and not binary:
-        build(meno, build_dir, cfg["build"])
+        cmake_build(meno, build_dir, cfg["build"]["cmake_args"], cfg["build"]["jobs"])
         binary = build_dir / cfg["build"]["binary"]
     if not args.mock and not Path(binary).exists():
         sys.exit(f"실행 파일이 없다: {binary}")
@@ -246,7 +191,7 @@ def main() -> None:
 
     with log_path.open("a", encoding="utf-8") as log:
         for i, job in enumerate(todo, 1):
-            csv_path = out / "raw" / f"{job['target']}-{job['count']}-rep{job['rep']}.csv"
+            csv_path = raw_path(out, job["target"], job["count"], job["rep"])
             record = dict(job, ok=False)
             start = time.monotonic()
             try:

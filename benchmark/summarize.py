@@ -3,7 +3,11 @@
 사용: python3 summarize.py <결과 폴더>
 
 raw/의 프레임 시간 CSV를 (대상, N, 반복)마다 평균·p50·p99로 줄이고, 반복 사이에서는 중앙값과 범위를 낸다.
-summary.csv, summary.md(표), frametime.png(그래프, matplotlib가 있을 때)를 결과 폴더에 쓴다.
+결과 폴더에 쓰는 것:
+  summary.csv   (대상, N)마다 통계. figures.py, report.py가 읽는다
+  summary.md    사람이 읽는 표
+  summary.json  판정 결과(대상 순서, 수직 동기화에 묶인 대상, 실패한 측정). report.py가 경고를 낼 때 읽는다
+그림은 figures.py가 그린다.
 """
 from __future__ import annotations
 
@@ -14,36 +18,31 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from vsync_check import locked
+from common import ok_runs, raw_path, read_frame_ms, read_runs, target_order
+from stats import locked, percentile
 
 STATS = ("mean", "p50", "p99")
 
 
-def percentile(sorted_values: list[float], q: float) -> float:
-    # llm-comparison/harness/frametime_stats.py와 같은 방식 (가장 가까운 순위)
-    return sorted_values[min(len(sorted_values) - 1, int(q * len(sorted_values)))]
-
-
 def per_run(path: Path) -> dict:
-    with path.open(newline="") as f:
-        values = sorted(float(r["frame_ms"]) for r in csv.DictReader(f))
+    values = sorted(read_frame_ms(path))
     return {"mean": sum(values) / len(values), "p10": percentile(values, 0.10), "p50": percentile(values, 0.50),
             "p99": percentile(values, 0.99)}
 
 
 def main() -> None:
     out = Path(sys.argv[1])
-    runs = [json.loads(l) for l in (out / "runs.jsonl").read_text(encoding="utf-8").splitlines()]
-    ok = {(r["target"], r["count"], r["rep"]) for r in runs if r["ok"]}
+    runs = read_runs(out)
+    ok = ok_runs(runs)
     failed = {(r["target"], r["count"], r["rep"]) for r in runs if not r["ok"]} - ok
 
     cells: dict[tuple, list[dict]] = defaultdict(list)
     near_refresh: dict[tuple, set] = defaultdict(set)
     for target, count, rep in sorted(ok):
-        r = per_run(out / "raw" / f"{target}-{count}-rep{rep}.csv")
+        r = per_run(raw_path(out, target, count, rep))
         cells[target, count].append(r)
         # 프레임이 한 주사율 주기에 촘촘히 모인 측정을 모은다(vsync_check.py와 같은 기준).
-        hz, is_locked = locked({"median_ms": r["p50"], "p10_ms": r["p10"]})
+        hz, is_locked = locked(r["p50"], r["p10"])
         if is_locked:
             near_refresh[target, hz].add(count)
     # 한 N에서만 주기 근처면 우연일 수 있다. 같은 대상이 서로 다른 N 두 개 이상에서 같은 주기에 머물면
@@ -68,13 +67,7 @@ def main() -> None:
 
     by = {(r["target"], r["count"]): r for r in rows}
     counts = sorted({r["count"] for r in rows})
-    # 대상 순서는 bench.toml의 targets를 따른다(env.json에 기록됨). 첫 대상이 기준이고, 이어지는 대상은
-    # 앞 대상에 한 단계를 얹은 것이라 이웃한 두 대상의 비가 그 단계의 비용이다.
-    env_path = out / "env.json"
-    env = json.loads(env_path.read_text(encoding="utf-8")) if env_path.exists() else {}
-    order = env.get("config", {}).get("sweep", {}).get("targets", [])
-    targets = [t for t in order if any(r["target"] == t for r in rows)]
-    targets += sorted({r["target"] for r in rows} - set(order))
+    targets = target_order(out, {r["target"] for r in rows})
     pairs = list(zip(targets[1:], targets[:-1]))
     if len(targets) > 2:
         pairs.append((targets[-1], targets[0]))
@@ -104,29 +97,11 @@ def main() -> None:
     if failed:
         lines.append(f"\n실패해 빠진 (대상, N, 반복): {sorted(failed)}")
     (out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # 사람이 읽는 summary.md의 문장은 바뀔 수 있다. 다른 도구는 판정을 이 파일에서 읽는다.
+    verdicts = {"targets": targets, "counts": counts, "vsync_locked": vsync_locked,
+                "failed": [list(f) for f in sorted(failed)]}
+    (out / "summary.json").write_text(json.dumps(verdicts, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("\n".join(lines))
-
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print("matplotlib가 없어 그래프는 건너뜀 (pip install -r requirements.txt)")
-        return
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharex=True)
-    for ax, s in zip(axes, ("mean", "p99")):
-        for target in targets:
-            rs = [r for r in rows if r["target"] == target]
-            ax.errorbar([r["count"] for r in rs], [r[f"{s}_ms"] for r in rs],
-                        yerr=[[r[f"{s}_ms"] - r[f"{s}_min"] for r in rs], [r[f"{s}_max"] - r[f"{s}_ms"] for r in rs]],
-                        marker="o", capsize=3, label=target)
-        ax.set(xscale="log", yscale="log", xlabel="sprites (N)", ylabel=f"frame time {s} (ms)", title=s)
-        ax.set_xlim(counts[0] / 1.3, counts[-1] * 1.3)
-        ax.grid(True, which="both", alpha=0.3)
-        ax.legend()
-    fig.tight_layout()
-    fig.savefig(out / "frametime.png", dpi=150)
-    print(f"그래프: {out / 'frametime.png'}")
 
 
 if __name__ == "__main__":
