@@ -45,10 +45,48 @@ meno_bench --target sfml|meno-renderer|meno-object --count N --warmup W --frames
 
 ## 측정 환경
 
-- **GPU에서 잴 것:** `env.json`의 `glxinfo`에서 `OpenGL renderer`가 `llvmpipe`면 소프트웨어 렌더링이다. 그 수치는 GPU 성능이 아니므로 표에 쓰지 않는다. #29의 Xvfb 환경은 llvmpipe라 여기에는 맞지 않는다.
-- **WSL2(WSLg):** 렌더러가 `D3D12 (...)`로 나오면 GPU를 쓴다. 다만 Windows 합성기를 거치므로 리눅스 기본 설치보다 느릴 수 있다. 결과 보고에 어느 쪽인지 적는다.
+### 준비 (Ubuntu 24.04 또는 WSL2의 Ubuntu 24.04)
+
+루트 README의 빌드 패키지에 더해 렌더러 확인용 `mesa-utils`가 필요하다. 없으면 실행기가 GPU에서 재는지 알 수 없어 멈춘다.
+
+```bash
+sudo apt-get install -y mesa-utils
+```
+
+```bash
+glxinfo -B | grep -E "OpenGL (renderer|version)"
+```
+
+### 렌더러 판정
+
+| `OpenGL renderer` | 뜻 | 측정 |
+|---|---|---|
+| `D3D12 (<GPU 이름>)` | WSLg가 Windows GPU를 쓴다 | 가능. 보고에 "WSL2(WSLg, D3D12)"라고 적는다 |
+| GPU 이름 (`NVIDIA ...`, `AMD ...`, `Mesa Intel ...`) | 리눅스 기본 설치에서 GPU 드라이버를 쓴다 | 가능 |
+| `llvmpipe`, `softpipe`, `swrast` | 소프트웨어 렌더링 (CPU가 그림) | 불가. 실행기가 멈춘다 |
+| 빈 값, `unable to open display` | `glxinfo`가 없거나 화면에 연결되지 않음 | 불가. 실행기가 멈춘다 |
+
+- **llvmpipe가 나올 때 (WSL):** Ubuntu 24.04의 Mesa 25.x는 WSLg에서 GPU가 연결돼 있어도 기본으로 llvmpipe를 고른다(2026-11-14, Mesa 25.2.8, WSL 3.0.5에서 확인). d3d12 드라이버를 직접 고른다. GPU가 둘(내장 + 외장)이면 아무것도 지정하지 않을 때 내장 GPU가 잡히므로 외장 GPU 이름의 일부도 준다.
+
+  ```bash
+  export GALLIUM_DRIVER=d3d12 MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA   # 외장 GPU 이름의 일부 (AMD면 Radeon 등)
+  ```
+
+  ```bash
+  glxinfo -B | grep -E "OpenGL renderer|Accelerated"   # D3D12 (<외장 GPU 이름>), Accelerated: yes 여야 한다
+  ```
+
+  - 측정하는 셸에서만 설정한다. `~/.bashrc`에 넣으면 다른 프로그램(#29의 Xvfb 실행 등)에도 적용된다.
+  - 실행기는 이 변수들을 실행 파일과 `glxinfo` 확인에 똑같이 넘기고, `env.json`의 `gl_env`에 기록한다.
+  - 그래도 llvmpipe면 `ls /dev/dxg /usr/lib/wsl/lib/libd3d12.so`로 GPU 연결을 확인하고, Windows GPU 드라이버 업데이트, `wsl --update`, `wsl --shutdown` 순서로 해 본다. `LIBGL_ALWAYS_SOFTWARE`가 설정돼 있으면 지운다.
+- **#29 환경과 다름:** #29의 Xvfb 환경은 원래 llvmpipe라 여기에 쓰지 않는다.
+- **WSLg의 한계:** Windows 합성기를 거치므로 리눅스 기본 설치보다 느릴 수 있다. 세 대상이 같은 조건이라 비교에는 쓸 수 있지만, 절대 수치(몇 개까지 60fps)는 그 환경 기준임을 보고에 적는다.
+- **흐름 점검만 할 때:** `--allow-software`를 주면 소프트웨어 렌더러에서도 돌지만, 그 결과는 표에 쓰지 않는다.
+
+### 측정할 때
+
 - **같은 조건으로:** 전원 연결, 고성능 전원 모드, 다른 프로그램 종료, 창을 가리지 않기. 노트북은 발열로 클럭이 내려가므로 `order = "interleaved"`로 (대상, N)을 섞어 한쪽에 몰리지 않게 한다.
-- **기록:** `env.json`에 CPU, GL 렌더러·드라이버, 컴파일러, CMake 빌드 타입, meno 커밋과 고친 채로 빌드했는지(`dirty`)가 남는다. 이어서 돌릴 때 CPU·GPU·meno 커밋이 바뀌었으면 실행기가 멈춘다.
+- **기록:** `env.json`에 CPU, GL 렌더러·드라이버, 컴파일러, CMake 빌드 타입, meno 커밋과 고친 채로 빌드했는지(`dirty`)가 남는다. 이어서 돌릴 때 CPU, GL 렌더러, meno 커밋 중 하나라도 바뀌었으면 실행기가 멈춘다(남은 비디오 메모리처럼 실행마다 바뀌는 값은 비교하지 않는다).
 
 ## 실행
 

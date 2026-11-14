@@ -47,7 +47,35 @@ def git_info(repo: Path) -> dict:
     }
 
 
-def environment(meno: Path | None, build_dir: Path | None) -> dict:
+SOFTWARE_RENDERERS = ("llvmpipe", "softpipe", "swrast")
+
+
+def gl_info(env: dict) -> dict:
+    """glxinfo -B에서 렌더러·버전만 뽑는다. 전체 출력에는 남은 비디오 메모리처럼 실행마다 바뀌는 값이
+    있어서, 이어서 돌릴 때 같은 환경인지 비교하는 데는 이 값들만 쓴다."""
+    # 실행 파일과 같은 환경 변수로 물어야 실행 파일이 실제로 쓸 렌더러가 나온다(WSL의 GALLIUM_DRIVER 등).
+    raw = sh(["glxinfo", "-B"], env=env)
+    pick = lambda name: next((l.split(":", 1)[1].strip() for l in raw.splitlines()
+                              if l.strip().startswith(name + ":")), "")
+    return {"gl_renderer": pick("OpenGL renderer string"), "gl_version": pick("OpenGL version string"),
+            "gl_vendor": pick("OpenGL vendor string"), "glxinfo": raw}
+
+
+def check_renderer(gl: dict, allow_software: bool) -> None:
+    """GPU에서 재는지 측정 전에 확인한다. 소프트웨어 렌더러의 수치는 GPU 성능이 아니다."""
+    renderer = gl["gl_renderer"]
+    if not renderer:
+        sys.exit("GL 렌더러를 알 수 없다. glxinfo가 없거나 화면(DISPLAY)에 연결되지 않았다.\n"
+                 "  sudo apt-get install -y mesa-utils 후 glxinfo -B 로 확인한다 (README의 '측정 환경')")
+    print(f"GL 렌더러: {renderer}")
+    if any(s in renderer.lower() for s in SOFTWARE_RENDERERS):
+        if not allow_software:
+            sys.exit(f"소프트웨어 렌더러({renderer})라 GPU 성능을 잴 수 없다. README의 '측정 환경'을 따르거나, "
+                     "흐름만 볼 때는 --allow-software")
+        print("경고: 소프트웨어 렌더러로 잰다. 이 결과는 표에 쓰지 않는다")
+
+
+def environment(meno: Path | None, build_dir: Path | None, gl: dict) -> dict:
     env = {
         "recorded_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "platform": platform.platform(),
@@ -55,12 +83,14 @@ def environment(meno: Path | None, build_dir: Path | None) -> dict:
         "cpu": next((l.split(":", 1)[1].strip() for l in sh(["lscpu"]).splitlines()
                      if l.startswith("Model name")), platform.processor()),
         "nproc": os.cpu_count(),
-        # GL 렌더러가 llvmpipe면 소프트웨어 렌더링이라 GPU 성능이 아니다. README의 "측정 환경" 참고.
-        "glxinfo": sh(["glxinfo", "-B"]),
+        **gl,
         "gcc": sh(["gcc", "--version"]).splitlines()[:1],
         "cmake": sh(["cmake", "--version"]).splitlines()[:1],
         "wsl": "microsoft" in platform.release().lower(),
         "display": os.environ.get("DISPLAY", ""),
+        # 렌더러 선택에 영향을 주는 변수. WSL에서는 이 값이 어느 GPU로 쟀는지를 정한다.
+        "gl_env": {k: v for k, v in sorted(os.environ.items())
+                   if k.startswith(("GALLIUM_", "MESA_", "LIBGL_", "__GL_")) or k == "vblank_mode"},
         "cpu_governor": sh(["cat", "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"]),
     }
     if meno:
@@ -156,6 +186,8 @@ def main() -> None:
     ap.add_argument("--reps", type=int, help="bench.toml의 반복 수 덮어쓰기 (점검용)")
     ap.add_argument("--mock", action="store_true", help="실행 파일 대신 가짜 프레임 시간으로 흐름 점검")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--allow-software", action="store_true",
+                    help="소프트웨어 렌더러(llvmpipe 등)에서도 돌린다. 흐름 점검용이고 결과는 표에 쓰지 않는다")
     args = ap.parse_args()
 
     cfg = tomllib.loads(args.config.read_text(encoding="utf-8"))
@@ -182,6 +214,13 @@ def main() -> None:
             print(f"  rep {j['rep']}  {j['target']:<5} N={j['count']}")
         return
 
+    # 빌드에 몇 분 쓰기 전에 렌더러부터 확인한다.
+    sweep, run_cfg = cfg["sweep"], cfg["run"]
+    proc_env = os.environ | run_cfg.get("env", {})
+    gl = {} if args.mock else gl_info(proc_env)
+    if not args.mock:
+        check_renderer(gl, args.allow_software)
+
     build_dir = HERE / "work" / f"build-{commit}"
     binary = args.bin
     if not args.mock and not binary:
@@ -189,18 +228,16 @@ def main() -> None:
         binary = build_dir / cfg["build"]["binary"]
     if not args.mock and not Path(binary).exists():
         sys.exit(f"실행 파일이 없다: {binary}")
-    sweep, run_cfg = cfg["sweep"], cfg["run"]
-    proc_env = os.environ | run_cfg.get("env", {})
     if not args.mock and todo:
         preflight(binary, cfg, proc_env, HERE / "work" / "preflight")
 
     (out / "raw").mkdir(parents=True, exist_ok=True)
     # 환경은 처음 한 번만 쓴다. 이어서 돌릴 때 다른 PC에서 돌면 섞이므로 비교해서 경고한다.
     env_path = out / "env.json"
-    env = environment(meno, None if args.mock else build_dir)
+    env = environment(meno, None if args.mock else build_dir, gl)
     if env_path.exists():
         old = json.loads(env_path.read_text(encoding="utf-8"))
-        changed = [k for k in ("cpu", "glxinfo", "meno") if old.get(k) != env.get(k)]
+        changed = [k for k in ("cpu", "gl_renderer", "meno") if old.get(k) != env.get(k)]
         if changed:
             sys.exit(f"이전 기록과 측정 환경이 다르다: {changed}. 다른 --out을 쓴다")
     else:
