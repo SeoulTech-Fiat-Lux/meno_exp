@@ -14,6 +14,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from vsync_check import locked
+
 STATS = ("mean", "p50", "p99")
 
 
@@ -25,7 +27,8 @@ def percentile(sorted_values: list[float], q: float) -> float:
 def per_run(path: Path) -> dict:
     with path.open(newline="") as f:
         values = sorted(float(r["frame_ms"]) for r in csv.DictReader(f))
-    return {"mean": sum(values) / len(values), "p50": percentile(values, 0.50), "p99": percentile(values, 0.99)}
+    return {"mean": sum(values) / len(values), "p10": percentile(values, 0.10), "p50": percentile(values, 0.50),
+            "p99": percentile(values, 0.99)}
 
 
 def main() -> None:
@@ -35,8 +38,18 @@ def main() -> None:
     failed = {(r["target"], r["count"], r["rep"]) for r in runs if not r["ok"]} - ok
 
     cells: dict[tuple, list[dict]] = defaultdict(list)
+    near_refresh: dict[tuple, set] = defaultdict(set)
     for target, count, rep in sorted(ok):
-        cells[target, count].append(per_run(out / "raw" / f"{target}-{count}-rep{rep}.csv"))
+        r = per_run(out / "raw" / f"{target}-{count}-rep{rep}.csv")
+        cells[target, count].append(r)
+        # 프레임이 한 주사율 주기에 촘촘히 모인 측정을 모은다(vsync_check.py와 같은 기준).
+        hz, is_locked = locked({"median_ms": r["p50"], "p10_ms": r["p10"]})
+        if is_locked:
+            near_refresh[target, hz].add(count)
+    # 한 N에서만 주기 근처면 우연일 수 있다. 같은 대상이 서로 다른 N 두 개 이상에서 같은 주기에 머물면
+    # N을 바꿔도 프레임 시간이 그대로라는 뜻이므로 동기화에 묶인 것이다.
+    vsync_locked = [f"{t}: N = {', '.join(f'{n:,}' for n in sorted(ns))}에서 {1000 / hz:.2f} ms ({hz} Hz)"
+                    for (t, hz), ns in sorted(near_refresh.items()) if len(ns) >= 2]
 
     rows = []
     for (target, count), reps in sorted(cells.items(), key=lambda kv: (kv[0][1], kv[0][0])):
@@ -58,8 +71,10 @@ def main() -> None:
     # 대상 순서는 bench.toml의 targets를 따른다(env.json에 기록됨). 첫 대상이 기준이고, 이어지는 대상은
     # 앞 대상에 한 단계를 얹은 것이라 이웃한 두 대상의 비가 그 단계의 비용이다.
     env_path = out / "env.json"
-    order = json.loads(env_path.read_text(encoding="utf-8")).get("config", {}).get("sweep", {}).get("targets", [])         if env_path.exists() else []
-    targets = [t for t in order if any(r["target"] == t for r in rows)] +         sorted({r["target"] for r in rows} - set(order))
+    env = json.loads(env_path.read_text(encoding="utf-8")) if env_path.exists() else {}
+    order = env.get("config", {}).get("sweep", {}).get("targets", [])
+    targets = [t for t in order if any(r["target"] == t for r in rows)]
+    targets += sorted({r["target"] for r in rows} - set(order))
     pairs = list(zip(targets[1:], targets[:-1]))
     if len(targets) > 2:
         pairs.append((targets[-1], targets[0]))
@@ -73,6 +88,10 @@ def main() -> None:
         return f"{ra[k + '_ms'] / rb[k + '_ms']:.2f}" if ra and rb else "-"
 
     lines = []
+    if vsync_locked:
+        lines += [f"> **주의: 수직 동기화에 묶인 대상 {len(vsync_locked)}개.** N을 바꿔도 프레임 시간이 주사율 주기에 머물러 "
+                  "N에 따른 차이가 가려진다. 이 결과는 쓰지 말고 vsync_check.py로 환경을 확인한 뒤 다시 잰다.", ">",
+                  *(f"> - {x}" for x in vsync_locked), ""]
     for k, title in (("mean", "평균"), ("p99", "p99")):
         header = ["N", *(f"{t} (ms)" for t in targets), *(f"{a}/{b}" for a, b in pairs)]
         lines += [f"### 프레임 시간 {title}", "", "| " + " | ".join(header) + " |",

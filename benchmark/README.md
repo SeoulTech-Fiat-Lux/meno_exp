@@ -12,6 +12,8 @@ run.py           Meno를 Release로 빌드하고 (대상, N, 반복)마다 새 �
 summarize.py     평균·p50·p99 표(summary.md, summary.csv)와 그래프(frametime.png)
 figures.py       배칭 판단용 그림 4장과 그 값 표(figures/)
 tracy.py         Tracy 캡처 도구 빌드, 캡처, 구간별 비용 표·그림(tracy/)
+vsync_check.py   수직 동기화가 정말 꺼지는지 확인 (vsync_check/ 프로그램 빌드·실행)
+report.py        Meno docs/benchmark.md 초안과 #30 종료 댓글 초안(report/)
 results/<날짜>-<meno 커밋>/   env.json, runs.jsonl, raw/<대상>-<N>-rep<k>.csv, 요약 파일, tracy/
 ```
 
@@ -83,6 +85,21 @@ glxinfo -B | grep -E "OpenGL (renderer|version)"
 - **#29 환경과 다름:** #29의 Xvfb 환경은 원래 llvmpipe라 여기에 쓰지 않는다.
 - **WSLg의 한계:** Windows 합성기를 거치므로 리눅스 기본 설치보다 느릴 수 있다. 세 대상이 같은 조건이라 비교에는 쓸 수 있지만, 절대 수치(몇 개까지 60fps)는 그 환경 기준임을 보고에 적는다.
 - **흐름 점검만 할 때:** `--allow-software`를 주면 소프트웨어 렌더러에서도 돌지만, 그 결과는 표에 쓰지 않는다.
+
+### 수직 동기화 확인 (vsync_check.py)
+
+본 측정 전에 측정할 PC에서, 측정과 같은 셸 환경 변수로 한 번 돌린다. 드라이버나 화면 합성기가 동기화를 강제하면 프레임 시간이 주사율 주기(60Hz면 16.7ms)에 묶여, N을 바꿔도 프레임 시간이 그대로 나온다. 그러면 측정 전체가 쓸모없다.
+
+```bash
+python3 vsync_check.py --out results/<날짜>-<meno 커밋>   # 처음엔 SFML 빌드로 1분 남짓. 실패하면 종료 코드 1
+```
+
+- **방법:** `vsync_check/`(SFML 3.1.0, 템플릿과 같은 커밋)로 사각형 100개만 그리는 창을 vsync 끔·켬으로 600프레임씩 돌린다.
+- **판정:** 끔의 중앙값이 한 주사율 주기의 2% 안이고 p10도 3% 안이면 실패다. 켬은 대조군으로, 측정용 덮어쓰기(`vblank_mode=0` 등) 없이 돌려 이 환경에서 동기화가 실제로 걸리는지 함께 보고한다.
+- **기록:** `--out`을 주면 결과 폴더에 `vsync.json`이 남고, `report.py`가 문서에 옮긴다.
+- **확인한 결과 (2026-11-14, RTX 5070 Ti, WSLg d3d12):** 통과. 끔 중앙값 1.30 ms. WSLg의 d3d12는 vsync 요청 자체를 지원하지 않아("Setting vertical sync not supported") 켬도 1.37 ms로, 프레임이 늘 동기화 없이 돈다.
+- **측정 뒤 확인:** `summarize.py`도 같은 기준으로 본다. 한 대상이 서로 다른 N 두 개 이상에서 같은 주사율 주기에 머물면 `summary.md` 맨 위에 경고를 붙인다(한 N에서만 주기 근처인 것은 우연일 수 있어 넘어간다).
+- **실패하면:** WSL은 위 `GALLIUM_DRIVER` 설정을 다시 확인한다. 리눅스 기본 설치는 NVIDIA 설정의 "Sync to VBlank"를 끄거나, 화면 합성기(GNOME 등)가 없는 세션에서 잰다.
 
 ### 측정할 때
 
@@ -176,8 +193,31 @@ python3 tracy.py capture --mock           # Tracy 없이 보고서 흐름 점검
 - **배칭 판단:** `zones.md`의 "늘어난 비용"에서 N에 비례해 늘어나는 구간 중 그리기 호출에 해당하는 것(`renderer.draw` 등)이 배칭으로 줄어든다. 장면 순회·변환 갱신은 배칭으로 줄지 않는다.
 - **화면 캡처:** Tracy 프로그램에서 본 타임라인·통계 화면은 png로 `tracy/`에 두고 `notes.md`에 설명을 단다.
 
+## Meno 문서 초안 (report.py)
+
+측정·요약·그림·Tracy 결과를 모아 Meno의 `docs/benchmark.md` 초안과 #30 종료 댓글 초안을 만든다. 숫자와 표는 결과 파일에서 옮기고, 해석과 결론은 `(작성)` 자리로 남긴다.
+
+```bash
+python3 report.py results/<날짜>-<meno 커밋>   # summarize.py, figures.py, tracy.py, vsync_check.py 다음에
+```
+
+| 결과 (`<결과 폴더>/report/`) | 옮길 곳 |
+|---|---|
+| `docs/benchmark.md` | Meno 저장소 `docs/benchmark.md` |
+| `docs/images/benchmark/*.png` (그림 4장, Tracy 1장) | Meno 저장소 `docs/images/benchmark/` |
+| `issue-30-comment.md` | SeoulTech-Fiat-Lux/Meno#30 종료 댓글 (이슈 양식의 TL;DR 형식) |
+
+- **초안 경고:** 아래 중 하나라도 있으면 문서 맨 위에 경고가 붙는다. 경고가 남은 문서는 결과로 쓰지 않는다.
+  - mock 데이터, GL 렌더러 없음·소프트웨어 렌더러, meno 커밋 없음·고친 채로 빌드(`dirty`)
+  - `vsync.json` 없음·실패, `summary.md`의 수직 동기화 경고, 실패해 빠진 측정
+  - `tracy/notes.md`의 관찰·판단이 비어 있음
+- **Tracy 노트:** `notes.md`에서 사람이 채운 "관찰"과 "판단"만 옮긴다. 채운 뒤 `report.py`를 다시 돌린다.
+- **다시 만들기:** `report/`는 매번 새로 쓴다. 고친 내용은 Meno 저장소로 옮긴 뒤에 고친다.
+
 ## 이슈 체크리스트와의 대응
 
-- **측정 실행 파일:** Meno 저장소 `benchmarks/`. 이 폴더의 약속을 따른다.
-- **결과 표와 그래프:** `summarize.py`가 만든 `summary.md`, `frametime.png`를 Meno의 `docs/benchmark.md`로 옮긴다.
-- **Tracy로 병목 분석:** `tracy.py`가 만든 `results/<…>/tracy/zones.md`, `zones.png`와 사람이 쓴 `notes.md`.
+- **측정 실행 파일:** Meno 저장소 `benchmarks/`. 이 폴더의 약속을 따른다. `run.py`가 측정 전에 대상마다 짧게 돌려 약속을 확인한다.
+- **측정 환경 확정:** "측정 환경"의 렌더러 판정과 `vsync_check.py`.
+- **결과 표와 그래프:** `summarize.py`(`summary.md`), `figures.py`(`figures/`).
+- **Tracy로 병목 분석:** `tracy.py`(`tracy/zones.md`, `zones.png`)와 사람이 쓴 `notes.md`.
+- **Meno 문서와 #30 정리:** `report.py`(`report/`).
