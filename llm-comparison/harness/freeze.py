@@ -13,7 +13,7 @@
 - 템플릿의 모든 GIT_TAG가 40자리 커밋 해시다.
 - 동결 전에 끝낼 일: specs/sim/ 시뮬레이션 스크립트(D8), 채점표 항목 문장이 지금 명세와 같음.
 - 문맥 묶음의 출처 머리글이 manifest.json의 저장소·커밋·파일 목록과 같다 (목록을 바꾸고 묶음을 다시 만들지 않은 경우를 잡음).
-- 모델 ID가 정해져 있다 (TBD 없음).
+- 모델마다 model(TBD 아님), 구독 CLI backend, effort가 정해져 있다.
 """
 from __future__ import annotations
 
@@ -27,11 +27,14 @@ import tomllib
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I로 실행해도 records.py를 찾게
+import records  # noqa: E402
+
 LOCK = BASE / "freeze.lock.json"
 # harness/는 폴더째 잠근다. 회차 결과를 바꾸는 코드만 이 폴더에 둔다 (결과를 읽는 도구는 analysis/, 채점은 grading/).
 # 파일을 하나하나 적으면, 새 모듈을 만들고 목록에 넣는 것을 잊었을 때 동결 검사를 조용히 빠져나간다.
 FROZEN = [
-    "experiment.toml", "requirements.txt", "prompts", "templates", "specs/games",
+    "experiment.toml", "prompts", "templates", "specs/games",
     "contexts/manifest.json", "contexts/bundles", "assets", "grading/sheets",
     "harness",
 ]
@@ -94,7 +97,7 @@ def prerequisite_problems(cfg: dict) -> list[str]:
         problems.append(f"specs/sim/에 시뮬레이션 스크립트가 없음: {', '.join(missing)} (D8)")
     # 채점표의 모든 항목 문장이 지금 명세에 있어야 한다. 명세를 고치고 채점표를 다시 만들지 않은 경우를 잡는다.
     # 팀이 항목을 합칠 때는 make_sheets.py처럼 명세 문장을 " / "로 이어 붙이므로, 조각마다 명세에 있는지 본다.
-    for game in [*cfg["games"]["main"], *cfg["games"].get("pilot", [])]:
+    for game in used:
         sheet = BASE / "grading" / "sheets" / f"{game}.csv"
         spec = BASE / "specs" / "games" / f"{game}.md"
         if not sheet.exists():
@@ -149,11 +152,13 @@ def consistency_problems() -> list[str]:
 
     problems += prerequisite_problems(cfg)
 
-    if any("TBD" in m["id"] or m.get("model") == "TBD" for m in cfg["models"]):
-        problems.append("experiment.toml의 모델이 아직 TBD")
     for m in cfg["models"]:
-        if m.get("backend", "litellm") != "litellm" and not m.get("effort"):
-            problems.append(f"{m['id']}의 effort가 없음. 구독 CLI는 기본 추론 수준이 바뀔 수 있어 고정한다")
+        if records.model_undecided(m):
+            problems.append(f"{m['id']}: experiment.toml의 모델이 아직 TBD")
+        if m.get("backend") not in ("claude-cli", "codex-cli"):
+            problems.append(f"{m['id']}: backend가 claude-cli·codex-cli가 아님 ({m.get('backend')})")
+        if not m.get("effort"):
+            problems.append(f"{m['id']}: effort가 없음. 구독 CLI는 기본 추론 수준이 바뀔 수 있어 고정한다")
     return problems
 
 

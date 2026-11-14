@@ -4,6 +4,7 @@ from types import SimpleNamespace as NS
 
 H = Path(__file__).resolve().parents[1] / "harness"; sys.path.insert(0, str(H))
 import run
+import llm
 
 cfg = tomllib.loads((H.parent / "experiment.toml").read_text(encoding="utf-8"))
 cfg["experiment"]["limit_wait_minutes"] = 0
@@ -19,7 +20,7 @@ def fake_run(cmd, **kw):
 
 run.subprocess.run = fake_run
 run.shutil.which = lambda name: f"/fake/{name}"
-run._first_line = lambda cmd: "9.9.9 (fake)"
+llm.first_line = lambda cmd: "9.9.9 (fake)"
 home = Path(tempfile.mkdtemp()); os.environ["CODEX_HOME"] = str(home)
 CTX = {"inputs_sha256": "x", "frozen": False, "environment": {}}
 
@@ -44,7 +45,7 @@ def arg(cmd, flag):
 TOP = next(m for m in cfg["models"] if m["tier"] == "top")
 
 # Claude: flags, stdin, token mapping
-c = run.ClaudeCLI(cfg)
+c = llm.ClaudeCLI(cfg)
 script[:] = [claude_ok("```cpp\nint main(){}\n```", "s1"),
              claude_ok("main", "s2", cache_read_input_tokens=50000, cache_creation_input_tokens=0)]
 r = run.Run(TOP, "probe", "probe", 0)
@@ -55,8 +56,8 @@ assert kw["input"] == "BIG PROMPT" and "--safe-mode" in cmd and arg(cmd, "--tool
 assert arg(cmd, "--model") == "claude-opus-5-5" and arg(cmd, "--effort") == TOP["effort"]
 assert "당신은" in arg(cmd, "--system-prompt") and "ANTHROPIC_API_KEY" not in kw["env"]
 assert kw["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "64000" and kw["cwd"] and kw["cwd"] != os.getcwd()
-assert (a.prompt_tokens, a.cached_tokens, a.cache_write_tokens, a.reasoning_tokens, a.cost, a.finish_reason) == \
-       (50100, 0, 50000, 300, None, "stop"), a
+assert (a.prompt_tokens, a.cached_tokens, a.cache_write_tokens, a.reasoning_tokens, a.finish_reason) == \
+       (50100, 0, 50000, 300, "stop"), a
 assert a.extra["cost_equiv_usd"] == 0.42 and a.model == "claude-opus-5-5"
 # round 2: resume + fork from s1, same cwd
 m += [{"role": "assistant", "content": a.content}, {"role": "user", "content": "FEEDBACK"}]
@@ -79,7 +80,7 @@ assert c.complete(run.Run(TOP, "g", "meno", 8), [{"role": "user", "content": "P"
 script[:] = [claude_err("Prompt is too long")]
 try:
     c.complete(run.Run(TOP, "g", "meno", 7), [{"role": "user", "content": "P"}]); raise AssertionError("no fail")
-except run.RunFailure as e:
+except llm.RunFailure as e:
     assert e.reason == "context_window"
 # usage limit -> wait and resend same round
 script[:] = [claude_err("Claude AI usage limit reached|1731600000"), claude_ok("ok", "s10")]
@@ -90,7 +91,7 @@ cfg["experiment"]["limit_wait_minutes"] = 1
 script[:] = [claude_err("usage limit reached")]
 try:
     c.complete(run.Run(TOP, "g", "meno", 5), [{"role": "user", "content": "P"}]); raise AssertionError("no raise")
-except run.UsageLimitReached:
+except llm.UsageLimitReached:
     pass
 cfg["experiment"]["limit_wait_hours"] = 6
 # auth -> stop harness
@@ -103,12 +104,12 @@ except SystemExit as e:
 # Codex: refuses global AGENTS.md
 (home / "AGENTS.md").write_text("my rules")
 try:
-    run.CodexCLI(cfg); raise AssertionError("should refuse AGENTS.md")
+    llm.CodexCLI(cfg); raise AssertionError("should refuse AGENTS.md")
 except SystemExit as e:
     assert "AGENTS.md" in str(e)
 (home / "AGENTS.md").unlink()
 OV = dict(next(m for m in cfg["models"] if m["tier"] == "other-vendor"), id="codex-cli/gpt-x", model="gpt-x")
-x = run.CodexCLI(cfg)
+x = llm.CodexCLI(cfg)
 
 
 def jl(*ev):
@@ -146,12 +147,30 @@ script[:] = [jl({"type": "thread.started", "thread_id": "t2"},
                 {"type": "turn.failed", "error": {"message": "context_length_exceeded: input too long"}})]
 try:
     x.complete(run.Run(OV, "g", "sfml", 1), [{"role": "user", "content": "P"}]); raise AssertionError("no fail")
-except run.RunFailure as e:
+except llm.RunFailure as e:
     assert e.reason == "context_window"
+
+# CLI가 명령줄을 거부하면 (모르는 플래그·설정 키) 기다리거나 다시 보내지 않고 바로 멈춘다
+def no_sleep(seconds):
+    raise AssertionError("명령줄 오류에서 기다리면 안 됨")
+llm.time.sleep = no_sleep
+for backend, rejected in (
+        (x, {"rc": 2, "stderr": "error: unexpected argument '--ignore-user-config' found\n\nUsage: codex exec [OPTIONS]"}),
+        (x, {"rc": 1, "stderr": "Error loading config: unknown feature `shell_tool`"}),
+        (c, {"rc": 1, "stdout": "", "stderr": "error: unknown option '--safe-mode'"})):
+    script[:] = [rejected]
+    n = len(calls)
+    try:
+        backend.complete(run.Run(OV if backend is x else TOP, "g", "meno", 1), [{"role": "user", "content": "P"}])
+        raise AssertionError("멈춰야 함")
+    except SystemExit as e:
+        assert "명령줄을 거부함" in str(e) and type(backend).__name__ in str(e), str(e)
+    assert len(calls) == n + 1  # 한 번만 불렀다
+llm.time.sleep = lambda s: None
 
 # probe() on claude
 script[:] = [claude_ok("```cpp\nint main() { return 0; }\n```", "p1"), claude_ok("main", "p2")]
-assert run.probe(cfg, TOP, c)
+assert llm.probe(TOP, c)
 
 # run_once end-to-end with claude backend (build stubbed)
 run.prepare_workspace = lambda cfg, cnd: Path(tempfile.mkdtemp())
@@ -165,9 +184,9 @@ def fb(cfg, work, code):
 run.build = fb
 script[:] = [claude_ok("```cpp\nint main(){}\n```", "e1")]
 out = Path(tempfile.mkdtemp())
-res = run.run_once(cfg, run.Run(TOP, "02-snake", "meno", 1), c, out, True, 1, CTX)
+res = run.run_once(cfg, run.Run(TOP, "02-snake", "meno", 1), c, out, True, CTX)
 assert res["backend"] == "claude-cli" and res["model_cli"] == "claude-opus-5-5" and res["effort"] == TOP["effort"]
-assert res["client_versions"] == ["9.9.9 (fake)"] and res["cost_equiv_usd"] == 0.42 and res["cost"] is None
-assert res["prompt_cache"] is True and res["rounds_detail"][0]["session_id"] == "e1" and res["reasoning_tokens"] == 300
+assert res["client_versions"] == ["9.9.9 (fake)"] and res["cost_equiv_usd"] == 0.42 and "cost" not in res
+assert res["backend"] == "claude-cli" and res["rounds_detail"][0]["session_id"] == "e1" and res["reasoning_tokens"] == 300
 json.dumps(res)
 print("ALL OK")

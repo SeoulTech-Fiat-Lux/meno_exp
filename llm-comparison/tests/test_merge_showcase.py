@@ -24,9 +24,7 @@ merge_runs.BASE = tmp  # 저장소의 잠금 파일 대신 가짜 잠금을 읽�
 
 def make_sources(root: Path) -> list[Path]:
     """계획대로 모든 회차를 세 사람 몫으로 나눠 만든다 (Claude 1인, ChatGPT 2인)."""
-    exp = cfg["experiment"]
-    runs = merge_runs.harness.plan_runs(cfg, cfg["games"]["main"], list(cfg["conditions"]), cfg["models"],
-                                        exp["reps"], exp["seed"])
+    runs = merge_runs.runlog.main_plan(cfg)
     other_games = sorted(set(cfg["games"]["main"]))
     sources = {name: root / name for name in ("claude", "chatgpt1", "chatgpt2")}
     for run in runs:

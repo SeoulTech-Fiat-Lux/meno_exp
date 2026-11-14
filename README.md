@@ -21,8 +21,9 @@ llm-comparison/
   contexts/                 조건별 문맥 규칙(manifest.json), 묶음 생성기, 묶음(bundles/)
   freeze.lock.json          동결 잠금 (동결 때 생성. 본 실행은 이 파일과 입력이 같아야 시작)
   prompts/                  지시문, 빌드 오류·형식 오류·길이 초과 피드백 문구
-  harness/                  회차 결과를 바꾸는 코드만 (폴더째 동결): run.py(회차 실행), records.py(기록 형식과 읽기),
-                            freeze.py(동결 잠금), run_noinput.sh(무입력 실행·녹화), frametime_stats.py
+  harness/                  회차 결과를 바꾸는 코드만 (폴더째 동결): run.py(회차 실행), llm.py(구독 CLI 호출),
+                            records.py(회차 계획과 기록 형식), freeze.py(동결 잠금), run_noinput.sh(무입력 실행·녹화),
+                            frametime_stats.py
   grading/                  채점: 채점표(sheets/), 채점표 생성기, 블라인드 묶음(blind.py), 채점 집계(collect.py)
   analysis/                 결과 읽기: 시범 요약(summarize.py), 사전 등록 분석(analyze.py), 빌드 오류 분류(errors.py),
                             대표작(showcase.py), 무입력 녹화 장면 모음(contact_sheet.sh)
@@ -40,14 +41,12 @@ SFML 빌드가 몇 배 느려지고, 블라인드 폴더의 심볼릭 링크와 
 하니스는 LLM이 만든 코드를 그대로 빌드·실행한다. 개인 파일이 없는 전용 WSL 배포판이나 계정에서 돌리기를 권한다.
 
 ```bash
-sudo apt-get install -y build-essential cmake git python3-pip xvfb ffmpeg x11-utils xdotool bc \
+sudo apt-get install -y build-essential cmake git python3 xvfb ffmpeg x11-utils xdotool bc \
   libxrandr-dev libxcursor-dev libxi-dev libudev-dev libfreetype-dev libgl1-mesa-dev \
   libegl1-mesa-dev libflac-dev libvorbis-dev libogg-dev libharfbuzz-dev
 ```
 
-```bash
-cd llm-comparison && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
-```
+파이썬 패키지는 설치하지 않는다. 하니스·채점·분석은 표준 라이브러리만 쓴다(Python 3.11 이상, Ubuntu 24.04는 3.12).
 
 ### 구독 CLI (D13)
 
@@ -66,7 +65,44 @@ python3 harness/run.py --models top --probe            # Claude 구독자 (light
 python3 harness/run.py --models other-vendor --probe   # ChatGPT 구독자
 ```
 
-API로 돌릴 예산이 생기면 `experiment.toml`의 `backend`를 `litellm`으로 바꾸고, 키를 `llm-comparison/.env`에 둔다(커밋하지 않음).
+### Codex 담당자 체크리스트 (ChatGPT Plus 구독자)
+
+타사 모델(`other-vendor`, Codex)은 아직 실제로 돌려 보지 않았다. 플래그 일부는 문서로만 맞췄으므로 아래를 순서대로 한다.
+모두 WSL의 `~/meno_exp/llm-comparison`에서 한다. 1~7은 동결 전에 끝낸다(하니스를 고쳐야 할 수 있으므로).
+
+1. **준비:** 위 "준비"대로 WSL에 저장소를 받고 패키지를 설치한다.
+2. **Codex 로그인:** Codex CLI를 설치하고 `codex login`으로 ChatGPT 계정에 로그인한다. `codex --version`을 적어 둔다.
+3. **전역 지시문 치우기:** `~/.codex/AGENTS.md`나 `~/.codex/AGENTS.override.md`가 있으면 실험 동안 다른 이름으로 바꿔 둔다. 있으면 하니스가 시작하지 않는다.
+4. **모델 확인:** `codex`를 열어 `/model` 목록에 `experiment.toml`의 타사 모델(`gpt-6.1-sol`)이 있는지 본다. 없으면 팀에 알린다(모델을 바꾸는 건 동결 전 팀 결정).
+5. **테스트:** `python3 tests/run_all.py`가 모두 통과하는지 본다.
+6. **연결 확인:** 아래 명령의 네 줄이 모두 `OK`여야 한다.
+
+   ```bash
+   python3 harness/run.py --models other-vendor --probe
+   ```
+
+   - **"명령줄을 거부함"으로 멈추면:** 이 Codex 버전이 플래그나 설정 키를 모르는 것이다. 출력 전체를 팀에 공유하고, `harness/llm.py`의 `CodexCLI.flags()`를 고친다.
+   - **"2왕복 대화 이어짐"이 FAIL:** `resume` 앞뒤의 옵션 순서가 맞지 않을 수 있다 (`CodexCLI.complete()`).
+   - **"도구 호출 없음"이 FAIL:** 명령 실행 도구를 끄는 설정(`features.shell_tool`)이 먹히지 않은 것이다.
+   - **"토큰 기록"이 FAIL:** `--json` 이벤트 형식이 바뀐 것이다 (`turn.completed`의 `usage`).
+   - 고쳤으면 `python3 tests/run_all.py`를 다시 돌리고 커밋한다.
+7. **문맥 토큰과 시범 1회:** 문맥 토큰을 재고, 퐁으로 2회차(조건별 1회)를 돌려 끝까지 도는지 본다.
+
+   ```bash
+   python3 harness/run.py --models other-vendor --measure-context
+   ```
+
+   ```bash
+   python3 harness/run.py --games pilot --models other-vendor --reps 1
+   ```
+
+8. **본 실행 (동결 뒤):** 자기 몫만 돌린다. 기록은 `runs/main/runs-other-vendor-<K>of2.jsonl`에 쌓인다.
+
+   ```bash
+   python3 harness/run.py --games main --models other-vendor --shard 1/2   # 두 번째 사람은 2/2
+   ```
+
+9. **결과 보내기:** `runs/main/`을 실행 파일(`game`)까지 압축해 블라인드 묶음을 만드는 사람에게 git 밖으로 보낸다. `runs/`는 채점이 끝날 때까지 push하지 않는다.
 
 ## 실행
 
@@ -206,4 +242,4 @@ python3 analysis/showcase.py runs/main grading/results/run_scores.csv ~/showcase
 
 ## 비밀 정보
 
-API 키는 `.env`에만 둔다. 녹화 영상, 실행 파일, 블라인드 폴더, 채점 전 대응표는 커밋하지 않는다(`.gitignore`에 등록됨).
+구독 로그인 정보는 각자의 홈 폴더(`~/.claude`, `~/.codex`)에 있고 저장소에 들어가지 않는다. 녹화 영상, 실행 파일, 블라인드 폴더, 채점 전 대응표는 커밋하지 않는다(`.gitignore`에 등록됨).

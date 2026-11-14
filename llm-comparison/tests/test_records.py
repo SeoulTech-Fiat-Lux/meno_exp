@@ -9,6 +9,7 @@ H = Path(__file__).resolve().parents[1] / "harness"; sys.path.insert(0, str(H))
 import freeze
 import records as runlog
 import run
+import llm
 
 # 여러 사람의 기록 파일을 모두 모은다
 d = Path(tempfile.mkdtemp())
@@ -45,7 +46,7 @@ assert not any("__pycache__" in k or k.endswith(".pyc") for k in hashes)
 cfg = tomllib.loads((H.parent / "experiment.toml").read_text(encoding="utf-8"))
 run.prepare_workspace = lambda c, n: Path(tempfile.mkdtemp())
 run.build = lambda c, work, code: (False, "error: x", 0.1)
-res = run.run_once(cfg, run.Run({"id": "mock"}, "01-pong", "meno", 1), run.MockLLM(cfg, False), Path(tempfile.mkdtemp()),
-                   True, 1, {"inputs_sha256": "x", "frozen": False, "environment": {}})
+res = run.run_once(cfg, run.Run({"id": "mock"}, "01-pong", "meno", 1), llm.MockLLM(cfg, False), Path(tempfile.mkdtemp()),
+                   True, {"inputs_sha256": "x", "frozen": False, "environment": {}})
 assert res["schema_version"] == runlog.SCHEMA_VERSION
 print("ALL OK")

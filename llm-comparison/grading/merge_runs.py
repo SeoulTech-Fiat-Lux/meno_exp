@@ -26,15 +26,11 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE / "harness"))
-import records as runlog  # noqa: E402
-import run as harness  # noqa: E402  (회차 계획과 회차 ID 규칙을 하니스와 똑같이 쓰려고)
+import records as runlog  # noqa: E402  회차 계획·회차 ID 규칙과 기록 형식 (하니스와 같은 모듈)
 
 
 def expected_run_ids(cfg: dict) -> set[str]:
-    exp = cfg["experiment"]
-    runs = harness.plan_runs(cfg, cfg["games"]["main"], list(cfg["conditions"]), cfg["models"],
-                             exp["reps"], exp["seed"])
-    return {r.run_id for r in runs}
+    return {r.run_id for r in runlog.main_plan(cfg)}
 
 
 def check(sources: list[Path], cfg: dict) -> tuple[list[str], list[dict]]:

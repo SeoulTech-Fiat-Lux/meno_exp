@@ -7,9 +7,8 @@
 하니스(harness/)를 고친 뒤, 특히 동결 전에 돌린다. 테스트는 모듈 전역을 바꿔 가짜 CLI를 끼우므로
 파일마다 따로 된 프로세스에서 돌린다. 저장소 안에는 아무것도 쓰지 않는다 (임시 폴더만 씀).
 
-    test_run       거부·캐시·추론 토큰 기록 (LiteLLM 백엔드)
-    test_fix       동결 일관성, 실패 기록(문맥 창 초과·정책 거부), 끊긴 회차, 무입력 실패
-    test_cli       Claude Code·Codex 백엔드: 플래그, 세션 이어 가기, 한도 대기, 로그인 오류, probe
+    test_fix       동결 일관성, 회차 흐름(문맥 창 초과·거부·형식 오류·잘림), 끊긴 회차, 무입력 실패
+    test_cli       Claude Code·Codex 백엔드: 플래그, 세션 이어 가기, 한도 대기, 로그인·명령줄 오류, probe
     test_trunc     Claude Code 출력 상한 오류를 잘린 왕복으로 처리
     test_noinput   1초 미만 종료·깨진 result.json에서도 하니스가 멈추지 않음
     test_summary   문맥 토큰 측정과 시범 요약
