@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import json
 import os
 import re
@@ -117,6 +118,22 @@ def bench_versions(build_dir: Path | None) -> dict:
     else:  # --bin으로 받은 실행 파일이나 mock: 고정한 커밋을 적는다
         meno = {"commit": pinned_meno(), "describe": "", "dirty": False}
     return {"meno": meno, "bench_app": git_info(HERE, "bench_app")}
+
+
+def gpu_slug(renderer: str) -> str:
+    """결과 폴더 이름에 붙일 GPU 이름. "D3D12 (NVIDIA GeForce RTX 5070 Ti)" → "rtx-5070-ti",
+    "D3D12 (AMD Radeon(TM) Graphics)" → "radeon". GPU가 여럿인 PC에서 결과 폴더가 겹치지 않게 한다."""
+    m = re.match(r"D3D12 \((.*)\)$", renderer.strip())
+    words = re.findall(r"[a-z0-9]+", (m.group(1) if m else renderer).lower())
+    drop = {"nvidia", "geforce", "amd", "tm", "r", "graphics", "intel", "corporation", "mesa"}
+    return "-".join([w for w in words if w not in drop][:4]) or "gpu"
+
+
+def result_dir(mock: bool, gl: dict) -> Path:
+    """기본 결과 폴더: results/<날짜>-<meno 커밋>-<GPU>/ (mock은 results-mock/<날짜>-mock/)."""
+    if mock:
+        return HERE / "results-mock" / f"{dt.date.today():%Y%m%d}-mock"
+    return HERE / "results" / f"{dt.date.today():%Y%m%d}-{pinned_meno()[:7]}-{gpu_slug(gl.get('gl_renderer', ''))}"
 
 
 # --- 결과 폴더 --------------------------------------------------------------

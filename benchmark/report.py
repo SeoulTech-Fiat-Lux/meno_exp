@@ -1,30 +1,31 @@
-"""Meno 문서 초안 만들기 (SeoulTech-Fiat-Lux/Meno#30).
+"""결과 보고서 만들기 (SeoulTech-Fiat-Lux/Meno#30).
 
-측정·요약·그림·Tracy 결과를 모아 Meno 저장소의 docs/benchmark.md 초안과 #30 종료 댓글 초안을 만든다.
-숫자와 표는 결과 파일에서 옮기고, 해석과 결론은 사람이 쓰도록 "(작성)" 자리를 남긴다.
+측정·요약·그림·Tracy 결과를 모아 결과 보고서와 #30 종료 댓글 초안을 만든다. 보고서는 meno_exp의 결과 폴더에
+그대로 두고 커밋한다(Meno 저장소로 옮기지 않음). 숫자와 표는 결과 파일에서 옮기고, 해석과 결론은 사람이 쓰도록
+"(작성)" 자리를 남긴다.
 
 사용 (benchmark/ 에서, summarize.py·figures.py·tracy.py 다음에):
     python3 report.py results/<날짜>-<meno 커밋>
 
 결과 (<결과 폴더>/report/):
-    docs/benchmark.md               Meno 저장소의 docs/benchmark.md로 옮길 초안
-    docs/images/benchmark/*.png     그 문서가 쓰는 그림. Meno의 docs/images/benchmark/로 함께 옮긴다
-    issue-30-comment.md             #30 종료 댓글 초안 (이슈 양식의 TL;DR 형식)
+    benchmark.md            결과 보고서. "(작성)" 자리를 채워 완성한다
+    (그림은 복사하지 않고 결과 폴더의 figures/*.png, tracy/zones.png를 상대 경로로 가리킨다)
+    issue-30-comment.md     #30 종료 댓글 초안 (이슈 양식의 TL;DR 형식)
 
-옮기기 전에 맨 위의 "초안 경고"가 있으면 먼저 해결한다. 경고가 남은 문서는 결과로 쓰지 않는다.
+맨 위에 "초안 경고"가 있으면 먼저 해결한다. 경고가 남은 보고서는 결과로 쓰지 않는다.
+report/는 실행할 때마다 다시 만들므로, 사람이 채운 benchmark.md를 덮어쓰지 않도록 채운 뒤에는 다시 돌리지 않는다.
 """
 from __future__ import annotations
 
 import csv
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from common import HERE, is_software, read_json
 TODO = "(작성)"
-IMAGES = "images/benchmark"
+FIGURES = "../figures"  # report/benchmark.md에서 본 그림 위치. 복사하지 않아 같은 파일이 두 벌 생기지 않는다
 
 
 def read(path: Path) -> str:
@@ -112,14 +113,10 @@ def main() -> None:
         ["git", "-C", str(HERE), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
 
     report = out / "report"
-    images = report / "docs" / IMAGES
-    images.mkdir(parents=True, exist_ok=True)
-    pictures = [p for p in sorted((out / "figures").glob("*.png"))]
-    if (tracy_dir / "zones.png").exists():
-        pictures.append(tracy_dir / "zones.png")
-    for p in pictures:
-        shutil.copy2(p, images / ("tracy-zones.png" if p.parent == tracy_dir else p.name))
-    img = lambda name, alt: f"![{alt}]({IMAGES}/{name})"
+    report.mkdir(parents=True, exist_ok=True)
+    pictures = sorted((out / "figures").glob("*.png")) + [p for p in [tracy_dir / "zones.png"] if p.exists()]
+    img = lambda name, alt: (f"![{alt}](../tracy/zones.png)" if name == "tracy-zones.png"
+                             else f"![{alt}]({FIGURES}/{name})")
 
     notes_text = filled_notes(notes)
     warn = warnings(out, env, vsync, verdicts, bool(notes_text))
@@ -133,7 +130,7 @@ def main() -> None:
     doc = f"""# 성능 측정: 스프라이트 N개 그리기
 
 {chr(10).join(head)}
-배칭을 적용할지 판단하기 위해, 스프라이트 N개를 그리는 프레임 시간을 SFML 직접 사용과 meno의 두 경로로 나눠 쟀다(SeoulTech-Fiat-Lux/Meno#30).
+배칭을 적용할지 판단하기 위해, 스프라이트 N개를 그리는 프레임 시간을 배칭한 SFML, SFML 직접 사용, meno의 두 경로로 나눠 쟀다(SeoulTech-Fiat-Lux/Meno#30).
 
 ## 요약
 
@@ -153,6 +150,7 @@ def main() -> None:
 | 움직임 | 시드로 정한 속도로 이동, 경계에서 튕김, 일정하게 회전. 고정 dt 1/60초. 세 대상이 같은 이동 함수를 씀 |
 | 통계 | 측정마다 평균·p50·p99, 반복 사이에서는 중앙값 |
 
+- `sfml-batched`: 사각형 N개를 `sf::VertexArray` 하나에 모아 `draw`를 한 번만 부름 (배칭했을 때의 하한선)
 - `sfml`: SFML을 직접 써서 스프라이트마다 `draw`
 - `meno-renderer`: meno의 `Renderer`로 직접 그리기
 - `meno-object`: `GameObject` + `Sprite` 컴포넌트 (사용자가 실제로 쓰는 경로)
@@ -189,7 +187,7 @@ def main() -> None:
 
 {section(figs, "2.")}
 
-{TODO} 어느 단계에서 비용이 붙는가. 배칭이 줄이는 것은 그리기 호출 수다. `sfml` 칸에도 스프라이트마다 `draw`를 부르는 비용이 들어 있다.
+{TODO} 어느 단계에서 비용이 붙는가. `sfml-batched → sfml` 칸이 스프라이트마다 `draw`를 부르는 비용, 곧 배칭으로 줄일 수 있는 몫이다.
 
 ### 스프라이트 하나당 비용
 
@@ -240,10 +238,14 @@ python3 tracy.py capture
 ```
 """
     doc = re.sub(r"\n{3,}", "\n\n", doc)
-    (report / "docs" / "benchmark.md").write_text(doc, encoding="utf-8")
+    target = report / "benchmark.md"
+    if target.exists() and TODO not in target.read_text(encoding="utf-8"):
+        # 사람이 (작성) 자리를 모두 채운 보고서는 덮어쓰지 않는다. 다시 만들려면 지우고 돌린다.
+        sys.exit(f"{target}는 이미 완성된 보고서다(\"{TODO}\" 자리가 없음). 다시 만들려면 지운 뒤 돌린다")
+    target.write_text(doc, encoding="utf-8")
 
     comment = f"""<!-- #30 종료 댓글 초안. 숫자는 결과에서 옮겼다. (작성) 자리를 채운 뒤 올린다. -->
-측정 결과는 `docs/benchmark.md`에 정리했다 (meno `{meno.get("commit", "-")[:7]}`, {env.get("gl_renderer", "-")}).
+측정 결과는 SeoulTech-Fiat-Lux/meno_exp의 `benchmark/results/{out.name}/report/benchmark.md`에 정리했다 (meno `{meno.get("commit", "-")[:7]}`, {env.get("gl_renderer", "-")}).
 
 {chr(10).join(key_numbers(out, targets))}
 
@@ -252,7 +254,7 @@ python3 tracy.py capture
 ### 🇬🇧 TL;DR for English Readers
 
 **:sparkles: Proposed Feature:**
-A sprite-count benchmark (N = {", ".join(f"{n:,}" for n in sweep.get("counts", []))}) comparing raw SFML, meno's `Renderer`, and meno's `GameObject` + `Sprite` path, to decide whether meno needs sprite batching.
+A sprite-count benchmark (N = {", ".join(f"{n:,}" for n in sweep.get("counts", []))}) comparing batched SFML (one draw call), raw SFML (one draw call per sprite), meno's `Renderer`, and meno's `GameObject` + `Sprite` path, to decide whether meno needs sprite batching.
 
 **:hammer_and_wrench: Implementation Details:**
 A standalone benchmark program fetches meno at the frozen commit and uses only its public API, so meno itself is unchanged. It draws N moving sprites with frame limit and vsync off, updating exactly once per frame on every path; a runner repeats each (target, N) {sweep.get("reps", "-")} times in fresh processes and reports mean and p99 frame time. A Tracy build replays `Game::run()` step by step through public calls to break a frame into stages by self time. {TODO}
@@ -261,8 +263,8 @@ A standalone benchmark program fetches meno at the frozen commit and uses only i
 {TODO} What the stage breakdown shows about where the cost of a high-level 2D API comes from.
 """
     (report / "issue-30-comment.md").write_text(comment, encoding="utf-8")
-    print(f"초안: {report / 'docs' / 'benchmark.md'}")
-    print(f"그림 {len(pictures)}장: {images}")
+    print(f"보고서: {target}")
+    print(f"그림 {len(pictures)}장: figures/, tracy/ (복사하지 않고 가리킴)")
     print(f"댓글 초안: {report / 'issue-30-comment.md'}")
     if warn:
         print("초안 경고:\n  - " + "\n  - ".join(warn))

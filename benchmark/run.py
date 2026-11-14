@@ -7,7 +7,7 @@
 사용 (benchmark/ 에서):
     python3 run.py --mock                  # 실행 파일 없이 흐름 점검 (results-mock/)
     python3 run.py --dry-run               # 돌릴 목록만 출력
-    python3 run.py                         # 빌드 후 측정 (results/<날짜>-<meno 커밋>/)
+    python3 run.py                         # 빌드 후 측정 (results/<날짜>-<meno 커밋>-<GPU>/)
     python3 run.py --bin <실행 파일>       # 이미 빌드한 실행 파일로 측정
 
 이미 기록된 (대상, N, 반복)은 건너뛰므로, 중단돼도 같은 명령(같은 --out)으로 이어서 돌릴 수 있다.
@@ -26,8 +26,8 @@ import sys
 import time
 from pathlib import Path
 
-from common import (HERE, bench_versions, build_bench, check_renderer, gl_env, gl_info, load_config, pinned_meno,
-                    raw_path, read_frame_ms, run_env, sh)
+from common import (HERE, bench_versions, build_bench, check_renderer, gl_env, gl_info, load_config, raw_path,
+                    read_frame_ms, result_dir, run_env, sh)
 
 
 def environment(build_dir: Path | None, gl: dict) -> dict:
@@ -82,7 +82,7 @@ def read_frames(path: Path, expected: int) -> list[float]:
 def mock_frames(job: dict, frames: int) -> list[float]:
     # 흐름 점검용 가짜 값. N에 비례하는 비용에 가끔 튀는 프레임을 더한다. 단계가 늘수록 스프라이트당 비용을 조금씩 얹는다.
     rng = random.Random(str(key(job)))  # 문자열 시드는 프로세스가 바뀌어도 같은 난수열을 낸다
-    per_sprite = {"sfml": 0.0007, "meno-renderer": 0.0008}.get(job["target"], 0.0010)
+    per_sprite = {"sfml-batched": 0.0002, "sfml": 0.0007, "meno-renderer": 0.0008}.get(job["target"], 0.0010)
     base = 0.4 + job["count"] * per_sprite
     return [base * rng.uniform(0.95, 1.05) * (3 if rng.random() < 0.01 else 1) for _ in range(frames)]
 
@@ -125,7 +125,7 @@ def preflight(binary, cfg: dict, proc_env: dict, work: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--bin", type=Path, help="이미 빌드한 실행 파일. 주면 빌드하지 않는다")
-    ap.add_argument("--out", type=Path, help="결과 폴더 (기본 results/<날짜>-<meno 커밋 7자리>)")
+    ap.add_argument("--out", type=Path, help="결과 폴더 (기본 results/<날짜>-<meno 커밋 7자리>-<GPU>)")
     ap.add_argument("--config", type=Path, default=HERE / "bench.toml")
     ap.add_argument("--reps", type=int, help="bench.toml의 반복 수 덮어쓰기 (점검용)")
     ap.add_argument("--mock", action="store_true", help="실행 파일 대신 가짜 프레임 시간으로 흐름 점검")
@@ -138,8 +138,13 @@ def main() -> None:
     if args.reps:
         cfg["sweep"]["reps"] = args.reps
 
-    commit = "mock" if args.mock else pinned_meno()[:7]
-    out = args.out or HERE / ("results-mock" if args.mock else "results") / f"{dt.date.today():%Y%m%d}-{commit}"
+    # 렌더러는 결과 폴더 이름(GPU)에 쓰이고, 빌드에 몇 분 쓰기 전에 확인도 한다.
+    sweep, run_cfg = cfg["sweep"], cfg["run"]
+    proc_env = run_env(cfg)
+    gl = {} if args.mock else gl_info(proc_env)
+    if not args.mock:
+        check_renderer(gl, args.allow_software)
+    out = args.out or result_dir(args.mock, gl)
     jobs = plan(cfg["sweep"])
     log_path = out / "runs.jsonl"
     done = set()
@@ -155,12 +160,6 @@ def main() -> None:
             print(f"  rep {j['rep']}  {j['target']:<5} N={j['count']}")
         return
 
-    # 빌드에 몇 분 쓰기 전에 렌더러부터 확인한다.
-    sweep, run_cfg = cfg["sweep"], cfg["run"]
-    proc_env = run_env(cfg)
-    gl = {} if args.mock else gl_info(proc_env)
-    if not args.mock:
-        check_renderer(gl, args.allow_software)
 
     build_dir = HERE / "work" / "build"
     binary = args.bin

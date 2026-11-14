@@ -234,9 +234,12 @@ def fig_distribution(out: Path, targets, counts, colors, notes: list[str]) -> No
 
 def main() -> None:
     out = Path(sys.argv[1])
+    if not (out / "raw").is_dir():
+        # 원자료는 git 밖에 보관한다. 없을 때 돌리면 커밋된 결과를 빈 값으로 덮어쓰므로 멈춘다.
+        sys.exit(f"{out / 'raw'}가 없다. 원자료를 풀어 둔 뒤 돌린다(README의 \"원자료 보관\")")
     style.apply(plt)
     targets, counts, by = load(out)
-    colors = dict(zip(targets, style.SERIES))
+    colors = style.target_colors(targets)
     (out / "figures").mkdir(exist_ok=True)
     notes = [f"# 그림 요약: {out.name}", "", "값은 반복 사이의 중앙값(4번은 반복을 합친 값)이다. 그림은 figures/*.png.", ""]
     fig_budget(out, targets, counts, by, colors, notes)

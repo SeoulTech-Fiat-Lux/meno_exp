@@ -11,7 +11,8 @@ jobs = 4
 counts = [100, 200, 400, 1000, 2000, 5000, 10000]
 # B1: SFML 직접 사용 → meno Renderer → meno GameObject·Sprite 순으로, 단계마다 비용이 얼마나 붙는지 본다.
 # 첫 대상이 기준이며, 요약 표의 비는 모두 이 대상에 대한 값이다.
-targets = ["sfml", "meno-renderer", "meno-object"]
+# sfml-batched(배칭 하한선)를 맨 앞에 둬, "sfml-batched → sfml"이 스프라이트마다 draw를 부르는 비용(배칭으로 줄일 수 있는 몫)이 되게 한다.
+targets = ["sfml-batched", "sfml", "meno-renderer", "meno-object"]
 reps = 5                     # (대상, N)마다 프로세스를 새로 띄워 반복한다
 warmup_frames = 120          # 창 생성·텍스처 업로드가 섞이는 앞쪽 프레임. 실행 파일은 이 프레임을 버리고 기록하지 않는다
 frames = 1000                # 기록할 프레임 수

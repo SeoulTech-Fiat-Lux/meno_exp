@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "message": "통과: 끔 1.27 ms(p10 1.15, p90 1.45)로 어느 주사율 주기에도 묶여 있지 않다. 대조군: 이 환경은 vsync 요청을 지원하지 않아 켜도 1.41 ms다(WSLg의 d3d12 등). 프레임이 늘 동기화 없이 돈다",
+  "gl_renderer": "D3D12 (AMD Radeon(TM) Graphics)",
+  "env": {
+    "GALLIUM_DRIVER": "d3d12",
+    "MESA_D3D12_DEFAULT_ADAPTER_NAME": "Radeon",
+    "__GL_SYNC_TO_VBLANK": "0",
+    "vblank_mode": "0"
+  },
+  "on": {
+    "vsync": "on",
+    "frames": 600,
+    "median_ms": 1.41,
+    "p10_ms": 1.221,
+    "p90_ms": 1.582
+  },
+  "off": {
+    "vsync": "off",
+    "frames": 600,
+    "median_ms": 1.268,
+    "p10_ms": 1.147,
+    "p90_ms": 1.453
+  }
+}

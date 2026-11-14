@@ -11,7 +11,7 @@
     python3 tracy.py report <tracy 폴더>            # 내보낸 CSV로 보고서만 다시 만들기
     python3 tracy.py capture --mock                 # Tracy 없이 보고서 흐름 점검 (results-mock/)
 
-결과 (기본 results/<날짜>-<meno 커밋>/tracy/):
+결과 (기본 results/<날짜>-<meno 커밋>-<GPU>/tracy/):
     <대상>-<N>.tracy          캡처 원본. 크므로 커밋하지 않는다(.gitignore). Tracy 프로그램으로 연다
     zones-<N>.csv             구간 호출마다 한 줄, self time (tracy-csvexport -u -e)
     frames-<N>.csv            "frame" 구간 호출마다 한 줄, 포함 시간 (tracy-csvexport -u -f frame)
@@ -31,7 +31,7 @@ import time
 from pathlib import Path
 
 import style
-from common import HERE, build_bench, check_renderer, cmake_build, gl_info, load_config, pinned_meno, run_env
+from common import HERE, build_bench, check_renderer, cmake_build, gl_info, load_config, result_dir, run_env
 
 
 def tool_dir(version: str) -> Path:
@@ -151,7 +151,7 @@ def report(out: Path, tcfg: dict) -> None:
     top = tcfg["top_zones"]
     counts = sorted(int(p.stem.split("-")[1]) for p in out.glob("zones-*.csv"))
     if not counts:
-        sys.exit(f"{out}에 zones-*.csv가 없다")
+        sys.exit(f"{out}에 zones-*.csv가 없다. 원자료를 풀어 둔 뒤 돌린다(README의 \"원자료 보관\")")
     data = {n: load_capture(out, n, tcfg["warmup_frames"]) for n in counts}
     # 가장 큰 N에서 비싼 구간부터 이름을 붙이고, 나머지는 other로 묶는다. 순서를 N마다 바꾸지 않으므로 구간의 색이 고정된다.
     ranked = sorted((z for z in data[counts[-1]][1] if z != FRAME_ZONE), key=lambda z: -data[counts[-1]][1][z])
@@ -297,15 +297,16 @@ def main() -> None:
         report(args.dir, tcfg)
         return
 
-    commit = "mock" if args.mock else pinned_meno()[:7]
-    out = args.out or HERE / ("results-mock" if args.mock else "results") / f"{dt.date.today():%Y%m%d}-{commit}" / "tracy"
+    env = run_env(cfg)
+    gl = {} if args.mock else gl_info(env)
+    if not args.mock:
+        check_renderer(gl, args.allow_software)
+    out = args.out or result_dir(args.mock, gl) / "tracy"
     out.mkdir(parents=True, exist_ok=True)
     if args.mock:
         for n in tcfg["counts"]:
             mock_capture(tcfg, out, n)
     else:
-        env = run_env(cfg)
-        check_renderer(gl_info(env), args.allow_software)
         bin_dir = build_tools(tcfg)
         binary = args.bin
         if not binary:

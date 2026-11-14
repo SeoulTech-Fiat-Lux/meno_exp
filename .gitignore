@@ -22,7 +22,12 @@ blind/
 # 문맥 묶음을 만들 때 내려받는 출처 저장소
 llm-comparison/contexts/src/
 
-# 성능 측정(#30): 빌드 폴더, 흐름 점검 결과, Tracy 캡처. Tracy 캡처는 크므로 화면 캡처와 notes.md만 커밋한다.
+# 성능 측정(#30): 빌드 폴더, 흐름 점검 결과, 원자료. 결과 폴더에서는 요약·그림·보고서만 커밋한다(폴더당 16개 안팎).
+# 원자료(측정마다 CSV 하나, Tracy 캡처와 그 내보내기)는 수백 개라 git 밖에 보관한다(benchmark/README.md의 "원자료 보관").
 benchmark/work/
 benchmark/results-mock/
+benchmark/results/*/raw/
+benchmark/results/*/tracy/zones-*.csv
+benchmark/results/*/tracy/frames-*.csv
+benchmark/results/*-raw.tar.gz
 *.tracy

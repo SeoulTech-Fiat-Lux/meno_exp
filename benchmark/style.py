@@ -7,9 +7,11 @@ INK = "#0b0b0b"
 INK_2 = "#52514e"
 GRID = "#e4e3df"
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
-# 겹쳐 그리는 선·점(모든 쌍이 서로 구분돼야 함)은 앞 세 칸까지만 검증됐다. 이웃한 칸만 구분되면 되는
-# 누적 막대는 여덟 칸을 다 쓴다.
-MAX_OVERLAID = 3
+# 선 그래프와 누적 막대는 이웃한 칸끼리만 구분되면 된다(dataviz 팔레트의 "adjacent" 검증, 여덟 칸 모두 통과).
+# 대상은 4개까지 쓴다. 넷째 칸(노랑)은 밝은 배경 대비가 3:1보다 낮으므로 선 끝 이름표와 figures.md 표를 함께 둔다.
+MAX_OVERLAID = 4
+# 색은 대상 이름을 따른다(순서를 따르지 않음). 대상을 더하거나 빼도 기존 대상의 색이 바뀌지 않게 한다.
+TARGET_COLORS = {"sfml": SERIES[0], "meno-renderer": SERIES[1], "meno-object": SERIES[2], "sfml-batched": SERIES[3]}
 # 흰 글자가 잘 안 보이는 밝은 칸. 그 위의 글자는 INK로 쓴다.
 LIGHT = {"#1baf7a", "#eda100", "#e87ba4"}
 MUTED = ["#b5b3ad", "#dddbd5"]  # "그 밖", "계측 안 됨"처럼 낮춰 보일 칸
@@ -24,6 +26,12 @@ def apply(plt) -> None:
         "axes.titlesize": 11, "axes.titleweight": "bold", "axes.titlelocation": "left",
         "lines.linewidth": 2, "lines.markersize": 5, "legend.frameon": False,
     })
+
+
+def target_colors(targets: list[str]) -> dict[str, str]:
+    """이름이 정해진 대상은 그 색을, 처음 보는 대상은 남은 칸을 차례로 쓴다."""
+    spare = [c for c in SERIES if c not in TARGET_COLORS.values()]
+    return {t: TARGET_COLORS.get(t) or spare.pop(0) for t in targets}
 
 
 def text_on(color: str) -> str:

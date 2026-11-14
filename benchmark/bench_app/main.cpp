@@ -1,10 +1,13 @@
-// 스프라이트 N개를 그리는 프레임 시간을 세 경로로 잰다 (SeoulTech-Fiat-Lux/Meno#30).
+// 스프라이트 N개를 그리는 프레임 시간을 네 경로로 잰다 (SeoulTech-Fiat-Lux/Meno#30).
 //
+//   sfml-batched   SFML을 직접, 배칭: 사각형 N개를 sf::VertexArray 하나에 모아 draw를 한 번만 부름
+//                  (배칭을 했을 때의 하한선. sfml과의 차이가 "배칭으로 얻을 수 있는 최대 이득"이다)
 //   sfml           SFML을 직접: sf::Sprite N개에 위치·회전을 넣고 draw
 //   meno-renderer  meno Game 루프 + draw 핸들러에서 Renderer::draw를 N번
 //   meno-object    meno Game 루프 + GameObject N개 (사용자가 실제로 쓰는 경로)
 //
 // 사용: meno_bench --target <대상> --count N --warmup W --frames F --out <csv> [--seed S] [--loop run|direct]
+//       [--screenshot <png>]  (sfml 대상만: 마지막 프레임을 저장해 두 SFML 대상이 같은 그림인지 확인한다)
 // 출력: 머리글 frame,frame_ms 와 F줄. 표준 오류에 frames·updates 요약 한 줄.
 //
 // 공정하게 만드는 규칙 (benchmark/README.md의 "실행 파일 약속"):
@@ -58,6 +61,7 @@ struct Options {
     std::string out;
     std::uint32_t seed = 1;
     bool directLoop = false;
+    std::string screenshot;
 };
 
 // --- 공통 상태와 이동 --------------------------------------------------------
@@ -157,7 +161,14 @@ private:
 
 // --- 대상: SFML 직접 ----------------------------------------------------------
 
-int runSfml(std::vector<Body>& bodies, FrameRecorder& rec) {
+void saveScreenshot(const sf::RenderWindow& window, const std::string& path) {
+    if (path.empty()) return;
+    sf::Texture shot(window.getSize());
+    shot.update(window);
+    if (!shot.copyToImage().saveToFile(path)) std::fprintf(stderr, "화면을 저장하지 못했다: %s\n", path.c_str());
+}
+
+int runSfml(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& screenshot) {
     sf::RenderWindow window(sf::VideoMode({kWidth, kHeight}), "meno_bench sfml");
     window.setFramerateLimit(0);
     window.setVerticalSyncEnabled(false);
@@ -202,7 +213,70 @@ int runSfml(std::vector<Body>& bodies, FrameRecorder& rec) {
             window.display();
         }
         BENCH_FRAME();
-        rec.tick();
+        if (rec.tick()) saveScreenshot(window, screenshot);  // display() 뒤라 화면에 보인 마지막 프레임이다
+    }
+    return rec.done() ? 0 : 1;
+}
+
+// 배칭: 스프라이트마다 draw를 부르는 대신, 회전한 사각형 N개의 꼭짓점(삼각형 2개 = 6개)을 CPU에서 계산해
+// VertexArray 하나에 넣고 draw를 한 번 부른다. 텍스처가 하나라 상태 전환이 없다. sf::Sprite와 같은 그림이 나온다
+// (기준점은 텍스처 중심, 회전은 시계 방향 도 단위).
+int runSfmlBatched(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& screenshot) {
+    sf::RenderWindow window(sf::VideoMode({kWidth, kHeight}), "meno_bench sfml-batched");
+    window.setFramerateLimit(0);
+    window.setVerticalSyncEnabled(false);
+
+    sf::Texture texture({kTexture, kTexture});
+    texture.update(texturePixels().data());
+    sf::VertexArray vertices(sf::PrimitiveType::Triangles, bodies.size() * 6);
+    sf::RenderStates states;
+    states.texture = &texture;
+
+    constexpr float t = static_cast<float>(kTexture);
+    const sf::Vector2f corner[4] = {{-kHalf, -kHalf}, {kHalf, -kHalf}, {kHalf, kHalf}, {-kHalf, kHalf}};
+    const sf::Vector2f uv[4] = {{0.f, 0.f}, {t, 0.f}, {t, t}, {0.f, t}};
+    constexpr int order[6] = {0, 1, 2, 0, 2, 3};
+
+    while (window.isOpen() && !rec.done()) {
+        BENCH_ZONE("frame");
+        {
+            BENCH_ZONE("app.events");
+            while (const auto event = window.pollEvent()) {
+                if (event->is<sf::Event::Closed>()) window.close();
+            }
+        }
+        {
+            BENCH_ZONE("app.update");
+            step(bodies);
+            rec.countUpdate();
+            {
+                BENCH_ZONE("bench.apply");
+                for (std::size_t i = 0; i < bodies.size(); ++i) {
+                    const float radians = bodies[i].angle * 3.14159265358979f / 180.f;
+                    const float c = std::cos(radians), sn = std::sin(radians);
+                    for (int k = 0; k < 6; ++k) {
+                        const sf::Vector2f p = corner[order[k]];
+                        sf::Vertex& v = vertices[i * 6 + static_cast<std::size_t>(k)];
+                        v.position = {bodies[i].x + p.x * c - p.y * sn, bodies[i].y + p.x * sn + p.y * c};
+                        v.texCoords = uv[order[k]];
+                    }
+                }
+            }
+        }
+        {
+            BENCH_ZONE("renderer.begin");
+            window.clear();
+        }
+        {
+            BENCH_ZONE("scene.draw");
+            window.draw(vertices, states);
+        }
+        {
+            BENCH_ZONE("window.display");
+            window.display();
+        }
+        BENCH_FRAME();
+        if (rec.tick()) saveScreenshot(window, screenshot);
     }
     return rec.done() ? 0 : 1;
 }
@@ -320,9 +394,11 @@ std::optional<Options> parse(int argc, char** argv) {
         else if (key == "--out") o.out = value;
         else if (key == "--seed") o.seed = static_cast<std::uint32_t>(std::strtoul(value.c_str(), nullptr, 10));
         else if (key == "--loop") o.directLoop = value == "direct";
+        else if (key == "--screenshot") o.screenshot = value;
         else return std::nullopt;
     }
-    const bool known = o.target == "sfml" || o.target == "meno-renderer" || o.target == "meno-object";
+    const bool known = o.target == "sfml-batched" || o.target == "sfml" || o.target == "meno-renderer" ||
+                       o.target == "meno-object";
     if (!known || o.count < 1 || o.warmup < 0 || o.frames < 1 || o.out.empty()) return std::nullopt;
     return o;
 }
@@ -332,7 +408,7 @@ std::optional<Options> parse(int argc, char** argv) {
 int main(int argc, char** argv) {
     const auto options = parse(argc, argv);
     if (!options) {
-        std::fprintf(stderr, "사용: meno_bench --target sfml|meno-renderer|meno-object --count N --warmup W "
+        std::fprintf(stderr, "사용: meno_bench --target sfml-batched|sfml|meno-renderer|meno-object --count N --warmup W "
                              "--frames F --out <csv> [--seed S] [--loop run|direct]\n");
         return 2;
     }
@@ -341,7 +417,8 @@ int main(int argc, char** argv) {
     FrameRecorder rec(o);
 
     int code = 0;
-    if (o.target == "sfml") code = runSfml(bodies, rec);
+    if (o.target == "sfml-batched") code = runSfmlBatched(bodies, rec, o.screenshot);
+    else if (o.target == "sfml") code = runSfml(bodies, rec, o.screenshot);
     else code = runMeno(o, bodies, rec, o.target == "meno-object");
 
     if (!rec.write(o.out)) {

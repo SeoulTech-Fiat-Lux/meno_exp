@@ -32,6 +32,9 @@ def per_run(path: Path) -> dict:
 
 def main() -> None:
     out = Path(sys.argv[1])
+    if not (out / "raw").is_dir():
+        # 원자료는 git 밖에 보관한다. 없을 때 돌리면 커밋된 결과를 빈 값으로 덮어쓰므로 멈춘다.
+        sys.exit(f"{out / 'raw'}가 없다. 원자료를 풀어 둔 뒤 돌린다(README의 \"원자료 보관\")")
     runs = read_runs(out)
     ok = ok_runs(runs)
     failed = {(r["target"], r["count"], r["rep"]) for r in runs if not r["ok"]} - ok
