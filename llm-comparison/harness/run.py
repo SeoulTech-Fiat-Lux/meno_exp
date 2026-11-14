@@ -710,6 +710,8 @@ def main() -> None:
                                         "한 게임의 두 조건·모든 반복은 같은 사람(같은 PC)에게 감")
     parser.add_argument("--probe", action="store_true",
                         help="고른 모델에 짧은 2왕복 대화를 보내 로그인·세션 이어 가기·토큰 기록·도구 꺼짐을 확인")
+    parser.add_argument("--measure-context", action="store_true",
+                        help="고른 모델로 조건별 문맥 묶음의 토큰 수를 재서 runs/context_tokens.jsonl에 남김 (모델마다 3호출)")
     args = parser.parse_args()
     main_run = args.games == "main" and not args.mock
 
@@ -719,6 +721,8 @@ def main() -> None:
     games = cfg["games"].get(args.games, None) or args.games.split(",")
     conditions = args.conditions.split(",")
     models = cfg["models"]
+    if args.games == "pilot" and args.models == "all" and cfg["games"].get("pilot_models"):
+        args.models = ",".join(cfg["games"]["pilot_models"])  # 시범 실행은 정해 둔 모델로만
     if args.mock:
         models = [{"tier": "mock", "id": "mock", "params": {}}]
     elif args.models != "all":
@@ -746,6 +750,10 @@ def main() -> None:
 
     if args.probe:
         sys.exit(0 if all(probe(cfg, model, llm_for(model)) for model in models) else 1)
+    if args.measure_context:
+        for model in models:
+            measure_context(cfg, model, llm_for(model), conditions)
+        return
 
     # 입력(설정, 지시문, 템플릿, 명세, 문맥, 에셋, 채점표, 하니스)의 해시. 본 실행은 동결 잠금과 같아야 시작한다.
     inputs = freeze.inputs_hash()
@@ -805,6 +813,38 @@ def main() -> None:
                      f"한도가 풀린 뒤 같은 명령으로 이어서 돌린다. 남은 회차 {len(pending) - index + 1}개.")
         with log_path.open("a", encoding="utf-8") as log:
             log.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+
+CONTEXT_TOKENS = BASE / "runs" / "context_tokens.jsonl"
+MEASURE_ASK = "\n\n위 문서를 받았으면 OK라고만 답하세요."
+
+
+def measure_context(cfg: dict, model: dict, llm, conditions: list[str]) -> list[dict]:
+    """조건별 문맥 묶음의 입력 토큰 수를 모델의 실제 토크나이저로 잰다.
+    (문맥 + 짧은 요청)과 (짧은 요청만)을 따로 보내 입력 토큰의 차이를 문맥 토큰으로 본다. 시스템 프롬프트 등
+    CLI가 붙이는 부분은 두 호출에 똑같이 들어가 빠진다. 한국어(meno)와 영어(SFML)는 바이트당 토큰 수가 달라
+    바이트로는 비교할 수 없기 때문이다. 결과는 runs/context_tokens.jsonl에 쌓는다 (모델·조건·묶음 해시별)."""
+    rows = []
+    base = llm.complete(Run(model, "context", "none", 0), [{"role": "user", "content": MEASURE_ASK.strip()}])
+    for condition in conditions:
+        raw = (BASE / cfg["conditions"][condition]["context"]).read_text(encoding="utf-8")
+        text = raw.rstrip()  # build_prompt와 같이 끝 공백을 떼고 넣는다
+        reply = llm.complete(Run(model, "context", condition, 0), [{"role": "user", "content": text + MEASURE_ASK}])
+        tokens = (reply.prompt_tokens - base.prompt_tokens
+                  if reply.prompt_tokens is not None and base.prompt_tokens is not None else None)
+        rows.append({"model": model["id"], "backend": model.get("backend", "litellm"), "condition": condition,
+                     # 회차 기록의 hashes.context와 맞추려고 build_prompt와 같은 원문(raw)으로 해시한다
+                     "context_sha256": sha256(raw), "context_bytes": len(text.encode("utf-8")),
+                     "context_tokens": tokens, "prompt_tokens_with": reply.prompt_tokens,
+                     "prompt_tokens_without": base.prompt_tokens,
+                     "client_version": reply.extra.get("client_version"),
+                     "measured_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")})
+        print(f"  {model['id']} {condition}: 문맥 {rows[-1]['context_bytes']:,}바이트 = {tokens}토큰", flush=True)
+    CONTEXT_TOKENS.parent.mkdir(parents=True, exist_ok=True)
+    with CONTEXT_TOKENS.open("a", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return rows
 
 
 PROBE_CODE = "int main() { return 0; }"

@@ -17,6 +17,7 @@ build_jobs = 4
 
 [games]
 pilot = ["01-pong"]                                         # D11: 퐁은 시범 전용
+pilot_models = ["light"]                                    # 시범 실행은 경량 모델(claude-haiku-5-5) 하나로
 main = ["02-snake", "03-flappy", "04-shooter", "06-maze"]   # D6 권장안. 팀 확정 후 고칠 것
 
 [conditions.meno]

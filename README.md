@@ -72,12 +72,22 @@ API로 돌릴 예산이 생기면 `experiment.toml`의 `backend`를 `litellm`으
 python3 harness/run.py --games pilot --mock --mock-fail-first --reps 1   # LLM 없이 흐름 점검
 ```
 
+시범 실행은 `claude-haiku-5-5`(경량) 하나로 돈다. `--games pilot`이면 모델을 따로 고르지 않아도 된다.
+
 ```bash
-python3 harness/run.py --games pilot --models light --dry-run   # 실행할 회차 목록과 기록 파일
+python3 harness/run.py --games pilot --dry-run          # 실행할 회차 목록과 기록 파일
 ```
 
 ```bash
-python3 harness/run.py --games pilot --models light             # 시범 실행 (퐁)
+python3 harness/run.py --games pilot --measure-context  # 조건별 문맥 토큰 재기 (3호출, runs/context_tokens.jsonl)
+```
+
+```bash
+python3 harness/run.py --games pilot                    # 시범 실행 (퐁 × 2조건 × 3회)
+```
+
+```bash
+python3 harness/summarize.py runs/pilot-<입력 해시>      # 결과 요약과 본 실행 추정 (폴더 이름은 시범 실행이 출력함)
 ```
 
 본 실행(동결 상태에서만 시작)은 사람마다 자기 몫만 돌린다.
