@@ -21,3 +21,8 @@ blind/
 
 # 문맥 묶음을 만들 때 받는 출처 저장소
 llm-comparison/contexts/src/
+
+# 성능 측정(#30): 빌드 폴더, 흐름 점검 결과, Tracy 캡처(크므로 화면 캡처와 notes.md만 커밋)
+benchmark/work/
+benchmark/results-mock/
+*.tracy

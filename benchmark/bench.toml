@@ -1,0 +1,31 @@
+# 성능 측정 설정 (SeoulTech-Fiat-Lux/Meno#30). 측정 코드는 Meno 저장소의 benchmarks/에 있고,
+# 이 저장소는 그 실행 파일을 돌리고 결과를 기록·요약한다. 형식 약속은 benchmark/README.md의 "실행 파일 약속".
+
+[build]
+# Meno 저장소를 Release로 빌드할 때 넘기는 CMake 옵션. 기본 OFF인 벤치마크만 켠다.
+cmake_args = [
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DMENO_BUILD_BENCHMARKS=ON",
+    "-DMENO_BUILD_EXAMPLES=OFF",
+    "-DMENO_BUILD_TESTS=OFF",
+]
+jobs = 4
+# 빌드 폴더 안에서 실행 파일의 상대 경로. Meno 쪽에서 이름이 정해지면 고친다.
+binary = "benchmarks/meno_bench"
+
+[sweep]
+# 200·400은 D4에서 넘겨받은 "적 200·400마리" 상황을 그대로 재려고 넣었다.
+counts = [100, 200, 400, 1000, 2000, 5000, 10000]
+targets = ["meno", "sfml"]   # meno로 그리기 / SFML을 직접 쓰기
+reps = 5                     # (대상, N)마다 프로세스를 새로 띄워 반복한다
+warmup_frames = 120          # 창 생성·텍스처 업로드가 섞이는 앞쪽 프레임. 실행 파일이 버리고 기록하지 않는다
+frames = 1000                # 기록할 프레임 수
+order = "interleaved"        # interleaved: 반복마다 모든 (대상, N)을 섞인 순서로 한 바퀴. 발열·클럭 변화가 한쪽에 몰리지 않게
+
+[run]
+# 실행 파일 명령. {bin} {target} {count} {warmup} {frames} {out} {seed}를 채운다.
+command = ["{bin}", "--target", "{target}", "--count", "{count}", "--warmup", "{warmup}",
+           "--frames", "{frames}", "--out", "{out}", "--seed", "{seed}"]
+timeout_s = 300
+# 드라이버가 수직 동기화를 강제하면 프레임 시간이 화면 주사율에 묶인다. 프로그램에서 끄는 것과 별개로 드라이버 쪽도 끈다.
+env = { vblank_mode = "0", __GL_SYNC_TO_VBLANK = "0" }
