@@ -198,6 +198,15 @@ class MockLLM:
 REFUSAL_FINISH = {"content_filter", "refusal"}  # 공급자가 거부를 알리는 종료 사유 (OpenAI, Anthropic)
 
 
+class RunFailure(Exception):
+    """다시 보내도 같은 결과가 나오는 API 오류. 하니스를 멈추지 않고 그 회차를 실패로 기록한다.
+    멈추면 이어서 돌릴 때 같은 회차를 LLM에게 새로 받게 되어, 실패한 표본이 다른 표본으로 바뀐다."""
+
+    def __init__(self, reason: str, detail: str):
+        super().__init__(f"{reason}: {detail}")
+        self.reason, self.detail = reason, detail
+
+
 def wants_cache_control(model_id: str) -> bool:
     """명시적 캐시 지점이 있어야 캐시가 걸리는 모델(Claude 계열)인지. OpenAI·Gemini는 자동으로 캐시한다."""
     return "claude" in model_id.lower() or model_id.lower().startswith("anthropic/")
@@ -235,12 +244,21 @@ class LiteLLM:
         params = {"max_tokens": exp["max_output_tokens"]} | run.model.get("params", {})
         if exp.get("prompt_cache", False) and wants_cache_control(run.model["id"]):
             messages = with_cache_breakpoint(messages)
+        # 다시 보내도 같은 결과인 오류만 회차 실패로 기록한다. 그 밖의 오류(인증, 잘못된 모델 ID, 잘못된 인자)는
+        # 모든 회차에 똑같이 생기는 설정 문제이므로 하니스를 멈춘다.
+        recorded = [(getattr(self.litellm.exceptions, name), reason) for name, reason in (
+            ("ContextWindowExceededError", "context_window"), ("ContentPolicyViolationError", "refused"))
+            if hasattr(self.litellm.exceptions, name)]
+        recorded_types = tuple(kind for kind, _ in recorded)
         for attempt in range(exp["api_retries"] + 1):
             start = time.monotonic()
             try:
                 response = self.litellm.completion(model=run.model["id"], messages=messages,
                                                    timeout=exp["llm_timeout_seconds"], **params)
                 break
+            except recorded_types as error:
+                reason = next(r for kind, r in recorded if isinstance(error, kind))
+                raise RunFailure(reason, f"{type(error).__name__}: {str(error)[:500]}") from error
             except retryable as error:  # API 오류는 왕복으로 세지 않고 다시 시도
                 if attempt == exp["api_retries"]:
                     raise
@@ -272,12 +290,9 @@ class LiteLLM:
 # 회차 실행
 # ---------------------------------------------------------------------------
 def template_versions(cfg: dict) -> dict:
-    meno = (BASE / cfg["conditions"]["meno"]["template_dir"] / "CMakeLists.txt").read_text(encoding="utf-8")
-    sfml = (BASE / cfg["conditions"]["sfml"]["template_dir"] / "CMakeLists.txt").read_text(encoding="utf-8")
-    meno_tag = re.search(r"GIT_TAG\s+(\S+)", meno)
-    sfml_tag = re.search(r"GIT_TAG\s+(\S+)", sfml)
-    return {"meno_commit": meno_tag.group(1) if meno_tag else None,
-            "sfml_tag": sfml_tag.group(1) if sfml_tag else None}
+    tags = freeze.template_tags(cfg)
+    return {"meno_commit": tags["meno"].get("meno"), "sfml_commit": tags["sfml"].get("SFML"),
+            "sfml_commit_meno_condition": tags["meno"].get("SFML")}
 
 
 def _first_line(command: list[str]) -> str | None:
@@ -307,6 +322,15 @@ def environment() -> dict:
 def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: int, context: dict) -> dict:
     exp = cfg["experiment"]
     run_dir = out_dir / run.run_id
+    # runs.jsonl에 없는데 폴더가 있으면 이전 시도가 중간에 끊긴 것이다 (Ctrl-C, 전원, 하니스 설정 오류, API 장애).
+    # 결과와 무관한 원인으로 끊긴 것이므로 다시 받되, 이전 시도를 지우지 않고 옮겨 두고 몇 번째 시도인지 기록한다.
+    interrupted = sorted(p.name for p in out_dir.glob(f"{run.run_id}.interrupted-*"))
+    if run_dir.exists() and any(run_dir.iterdir()):
+        target = out_dir / f"{run.run_id}.interrupted-{len(interrupted) + 1}"
+        run_dir.rename(target)
+        interrupted.append(target.name)
+        print(f"  끊긴 이전 시도를 {target.name}로 옮기고 다시 시작", flush=True)
+    attempt = len(interrupted) + 1
     run_dir.mkdir(parents=True, exist_ok=True)
     work = prepare_workspace(cfg, run.condition)
     prompt, meta = build_prompt(cfg, run.condition, run.game)
@@ -316,8 +340,17 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
     rounds: list[dict] = []
     started = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     success, code, failure = False, None, None
+    failure_detail = None
     for number in range(1, exp["max_rounds"] + 1):
-        reply = llm.complete(run, messages)
+        try:
+            reply = llm.complete(run, messages)
+        except RunFailure as error:
+            # 문맥 창 초과·정책 거부: 다시 보내도 같으므로 이 왕복을 실패로 남기고 회차를 끝낸다.
+            rounds.append({"round": number, "build_ok": False, "api_failure": error.reason,
+                           "refused": error.reason == "refused", "code_found": False})
+            failure, failure_detail = error.reason, error.detail
+            print(f"  왕복 {number}: {error.reason} → 실패", flush=True)
+            break
         (run_dir / f"response_{number}.md").write_text(reply.content, encoding="utf-8")
         messages.append({"role": "assistant", "content": reply.content})
         code, blocks = extract_code(reply.content)
@@ -365,12 +398,21 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
         (run_dir / "main.cpp").write_text(code, encoding="utf-8")
         shutil.copy(work / "build" / "game", run_dir / "game")  # 채점용. git에는 넣지 않는다
         if not skip_noinput:
-            subprocess.run([str(BASE / "harness" / "run_noinput.sh"), str(work / "build"),
-                            str(run_dir / "noinput"), str(exp["noinput_seconds"])],
-                           check=True, stdout=subprocess.DEVNULL)
-            subprocess.run([sys.executable, str(BASE / "harness" / "frametime_stats.py"),
-                            str(run_dir / "noinput")], check=True, stdout=subprocess.DEVNULL)
-            noinput = json.loads((run_dir / "noinput" / "result.json").read_text())
+            # 무입력 실행이나 통계가 실패해도 하니스를 멈추지 않는다. 멈추면 이 회차를 LLM에게 새로 받게 된다.
+            result_path = run_dir / "noinput" / "result.json"
+            errors = []
+            steps = [("run_noinput.sh", [str(BASE / "harness" / "run_noinput.sh"), str(work / "build"),
+                                         str(run_dir / "noinput"), str(exp["noinput_seconds"])]),
+                     ("frametime_stats.py", [sys.executable, str(BASE / "harness" / "frametime_stats.py"),
+                                             str(run_dir / "noinput")])]
+            for label, command in steps:
+                proc = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                if proc.returncode != 0:
+                    errors.append(f"{label} 종료 코드 {proc.returncode}: {proc.stderr.strip()[-500:]}")
+                    break
+            noinput = json.loads(result_path.read_text()) if result_path.exists() else {}
+            if errors:
+                noinput["harness_error"] = errors
 
     def total(key: str) -> int | float | None:
         values = [r.get(key) for r in rounds if r.get(key) is not None]
@@ -385,7 +427,8 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
         "model_params": run.model.get("params", {}),
         "models_served": sorted({r["model_served"] for r in rounds if r.get("model_served")}),
         "game": run.game, "condition": run.condition, "rep": run.rep,
-        "rounds": len(rounds), "build_success": success, "failure": failure,
+        "rounds": len(rounds), "build_success": success, "failure": failure, "failure_detail": failure_detail,
+        "attempt": attempt, "interrupted_attempts": interrupted,
         # 비교 지표는 캐시와 무관한 원래 토큰 수(prompt_tokens, completion_tokens)다. 캐시 토큰은 비용 설명용.
         "prompt_tokens": total("prompt_tokens"), "completion_tokens": total("completion_tokens"),
         "reasoning_tokens": total("reasoning_tokens"),

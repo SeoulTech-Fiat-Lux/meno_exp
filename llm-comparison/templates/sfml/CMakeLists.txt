@@ -21,11 +21,11 @@ set(SFML_BUILD_DOC      OFF CACHE BOOL "" FORCE)
 set(SFML_BUILD_NETWORK  OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS   OFF)
 
+# 태그는 옮겨질 수 있으므로 커밋 해시로 고정한다 (meno 템플릿과 같은 해시. 얕은 clone은 해시를 받지 못해 쓰지 않는다).
 FetchContent_Declare(
         SFML
         GIT_REPOSITORY https://github.com/SFML/SFML.git
-        GIT_TAG        3.1.0
-        GIT_SHALLOW    ON
+        GIT_TAG        8835b6b955c96fa1ad1278a8dae6f05c4143effc # 3.1.0
         SYSTEM
         EXCLUDE_FROM_ALL
 )

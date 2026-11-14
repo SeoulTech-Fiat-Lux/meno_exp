@@ -53,6 +53,7 @@ OPENAI_API_KEY=...
 ## 실행
 
 모두 `llm-comparison/`에서 실행한다. 이미 `runs.jsonl`에 있는 회차는 건너뛰므로, 중단되면 같은 명령으로 이어서 돌린다.
+중간에 끊긴 회차는 이전 폴더를 `<회차 ID>.interrupted-N`으로 옮겨 두고 다시 받으며, 몇 번째 시도인지 기록된다.
 
 ```bash
 python3 harness/run.py --games pilot --mock --mock-fail-first --reps 1   # API 없이 흐름 점검
@@ -105,7 +106,7 @@ sudo apt-get install -y libx11-6 libxrandr2 libxcursor1 libxi6 libudev1 libgl1 l
    ```bash
    cd llm-comparison/contexts && mkdir -p src
    git clone https://github.com/SeoulTech-Fiat-Lux/Meno.git src/Meno && git -C src/Meno checkout <동결 커밋>
-   git clone https://github.com/SFML/SFML.git src/SFML && git -C src/SFML checkout 3.1.0
+   git clone https://github.com/SFML/SFML.git src/SFML && git -C src/SFML checkout 8835b6b955c96fa1ad1278a8dae6f05c4143effc
    git clone https://github.com/SFML/SFML-Website.git src/SFML-Website && git -C src/SFML-Website checkout 6d461d96c47d795c671f10e723a1b9ce13533edb
    python3 build_context.py manifest.json meno bundles/meno.md SeoulTech-Fiat-Lux/Meno=src/Meno
    python3 build_context.py manifest.json sfml bundles/sfml.md SFML/SFML=src/SFML SFML/SFML-Website=src/SFML-Website

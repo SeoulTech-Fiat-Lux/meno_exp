@@ -16,13 +16,23 @@ endif()
 include(FetchContent)
 
 # 실험 동결 버전. 태그는 옮겨질 수 있으므로 커밋 해시로 고정한다.
-# 동결 태그를 새로 만들면 이 해시와 sfml 템플릿의 SFML 태그를 함께 확인할 것.
+# 동결 태그를 새로 만들면 이 해시를 바꾼다 (harness/freeze.py가 contexts/manifest.json과 대조한다).
 FetchContent_Declare(
         meno
         GIT_REPOSITORY https://github.com/SeoulTech-Fiat-Lux/Meno.git
         GIT_TAG        3a1b67c0eeb42075292e72ef1b65e889f7c4f610 # v0.2.0
 )
-# meno는 내부에서 SFML 3.1.0을 정적 라이브러리로 받아 빌드한다(sfml 템플릿과 같은 조건).
+# meno는 내부에서 SFML을 태그(3.1.0)로 받는다. FetchContent는 먼저 선언한 것을 쓰므로, 여기서 같은 이름으로
+# 커밋 해시를 먼저 선언해 두 조건이 같은 SFML 커밋으로 빌드되게 한다. 옵션(SYSTEM, EXCLUDE_FROM_ALL)은 meno와 같다.
+# sfml 템플릿의 해시와 같아야 한다 (freeze.py가 확인).
+FetchContent_Declare(
+        SFML
+        GIT_REPOSITORY https://github.com/SFML/SFML.git
+        GIT_TAG        8835b6b955c96fa1ad1278a8dae6f05c4143effc # 3.1.0
+        SYSTEM
+        EXCLUDE_FROM_ALL
+)
+# meno가 SFML을 정적 라이브러리로 빌드한다(sfml 템플릿과 같은 조건).
 FetchContent_MakeAvailable(meno)
 
 add_executable(game main.cpp)

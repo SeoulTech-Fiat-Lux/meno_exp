@@ -9,6 +9,8 @@
 
 일관성 검사:
 - 템플릿의 meno 커밋과 문맥 목록(manifest.json)의 meno 커밋이 같다 (빌드하는 코드와 LLM에게 주는 문서가 같은 버전).
+- 두 템플릿의 SFML 커밋이 manifest.json의 SFML/SFML 커밋과 같다 (두 조건이 같은 SFML로 빌드됨).
+- 템플릿의 모든 GIT_TAG가 40자리 커밋 해시다.
 - 문맥 묶음의 출처 머리글이 manifest.json의 저장소·커밋·파일 목록과 같다 (목록을 바꾸고 묶음을 다시 만들지 않은 경우를 잡음).
 - 모델 ID가 정해져 있다 (TBD 없음).
 """
@@ -48,17 +50,49 @@ def inputs_hash(hashes: dict[str, str] | None = None) -> str:
     return hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
 
 
+COMMIT = re.compile(r"^[0-9a-f]{40}$")
+
+
+def declared_tags(cmake_text: str) -> dict[str, str]:
+    """CMakeLists.txt의 FetchContent_Declare(<이름> ... GIT_TAG <값> ...)를 {이름: 값}으로 돌려준다."""
+    tags: dict[str, str] = {}
+    for name, body in re.findall(r"FetchContent_Declare\(\s*(\w+)(.*?)\)", cmake_text, re.S):
+        tag = re.search(r"GIT_TAG\s+(\S+)", body)
+        if tag:
+            tags[name] = tag.group(1)
+    return tags
+
+
+def template_tags(cfg: dict) -> dict[str, dict[str, str]]:
+    """조건별 템플릿의 {의존성 이름: GIT_TAG}."""
+    return {c: declared_tags((BASE / cond["template_dir"] / "CMakeLists.txt").read_text(encoding="utf-8"))
+            for c, cond in cfg["conditions"].items()}
+
+
 def consistency_problems() -> list[str]:
     problems: list[str] = []
     cfg = tomllib.loads((BASE / "experiment.toml").read_text(encoding="utf-8"))
     manifest = json.loads((BASE / "contexts" / "manifest.json").read_text(encoding="utf-8"))
+    tags = template_tags(cfg)
 
-    template = (BASE / cfg["conditions"]["meno"]["template_dir"] / "CMakeLists.txt").read_text(encoding="utf-8")
-    tag = re.search(r"GIT_TAG\s+(\S+)", template)
+    meno_tag = tags["meno"].get("meno")
     manifest_meno = manifest["meno"][0]["commit"]
-    if not tag or tag.group(1) != manifest_meno:
-        problems.append(f"템플릿의 meno 커밋({tag.group(1)[:7] if tag else '없음'})과 "
+    if meno_tag != manifest_meno:
+        problems.append(f"템플릿의 meno 커밋({meno_tag[:7] if meno_tag else '없음'})과 "
                         f"manifest.json의 meno 커밋({manifest_meno[:7]})이 다름")
+
+    # 두 조건이 같은 SFML 커밋으로 빌드되고, LLM에게 주는 SFML readme도 그 커밋에서 나와야 한다.
+    manifest_sfml = next((s["commit"] for s in manifest["sfml"] if s["repo"] == "SFML/SFML"), None)
+    for condition in ("meno", "sfml"):
+        sfml_tag = tags[condition].get("SFML")
+        if sfml_tag != manifest_sfml:
+            problems.append(f"{condition} 템플릿의 SFML({sfml_tag or '선언 없음'})이 "
+                            f"manifest.json의 SFML/SFML 커밋({(manifest_sfml or '없음')[:7]})과 다름")
+
+    for condition, deps in tags.items():
+        for name, value in deps.items():
+            if not COMMIT.match(value):
+                problems.append(f"{condition} 템플릿의 {name}이 커밋 해시가 아님({value}). 태그는 옮겨질 수 있음")
 
     for condition, sources in manifest.items():
         if condition == "rule":
