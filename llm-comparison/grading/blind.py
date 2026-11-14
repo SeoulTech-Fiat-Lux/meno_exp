@@ -8,6 +8,7 @@
 출력 폴더:
     <ID>/game, <ID>/assets(공용 에셋 링크)   채점자는 `cd <ID> && ./game`으로 실행한다
     <ID>/sheet-<채점자>.csv                 배정된 채점자마다 따로 쓰는 채점표 (같은 파일을 덮어쓰지 않게)
+    <ID>/meta-<채점자>.csv                  어느 조건 같은지 추측, 확신, 채점에 쓴 시간 (블라인드 점검·부담 측정)
     assignments.csv                         ID별 채점자 배정표 (조건·모델 정보 없음)
 창 제목으로 게임은 알 수 있지만, 조건과 모델은 대응표에만 있다.
 대응표는 채점이 끝날 때까지 아무도 열지 않는다. 저장소 안 경로는 거부한다. 채점이 끝나면 grading/mapping.csv로 커밋한다.
@@ -67,6 +68,12 @@ def main() -> None:
         for grader in next(pairs):
             if sheet.exists():
                 shutil.copy(sheet, target / f"sheet-{grader}.csv")
+            # 블라인드 점검과 채점 부담을 재는 칸. 채점이 끝난 뒤 적는다 (PLAN 2.4절).
+            with (target / f"meta-{grader}.csv").open("w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["guess_condition", "confidence", "minutes", "note"])
+                writer.writerow(["", "", "", ""])
+                writer.writerow(["# guess_condition: meno / sfml / 모름, confidence: 1(찍음)~3(확실), minutes: 채점에 쓴 분"])
             assignment_rows.append({"blind_id": blind_id, "game": record["game"], "grader": grader})
         mapping_rows.append({"blind_id": blind_id, "run_id": record["run_id"], "game": record["game"],
                              "condition": record["condition"], "model": record["model_requested"],

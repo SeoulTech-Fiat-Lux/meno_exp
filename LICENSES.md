@@ -6,10 +6,10 @@
 
 | 대상 | 라이선스 | 상태 |
 |---|---|---|
-| 하니스·도구 코드 (`llm-comparison/harness/`, `grading/`, `contexts/*.py`, `specs/pptx2md.py`) | 정할 것 (Meno와 같은 zlib 권장) | 미정 |
+| 하니스·도구 코드 (`llm-comparison/harness/`, `grading/`, `contexts/*.py`, `specs/pptx2md.py`, `benchmark/*.py`) | 정할 것 (Meno와 같은 zlib 권장) | 미정 |
 | 요구사항 문서 (`llm-comparison/specs/`) | 정할 것 (CC BY 4.0 권장) | 미정 |
 | 에셋 (`llm-comparison/assets/` 중 폰트 제외) | 정할 것 (CC BY 4.0 또는 CC0) | 미정. 제작 방식은 `assets-spec.xlsx`의 출처·라이선스 열 |
-| 실험 결과 (`runs/`, `analysis/`) | 정할 것 (CC BY 4.0 권장) | 미정 |
+| 실험 결과 (`runs/`, `analysis/`, `benchmark/results/`) | 정할 것 (CC BY 4.0 권장) | 미정 |
 
 ## 가져온 것
 
