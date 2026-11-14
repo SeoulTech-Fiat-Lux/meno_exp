@@ -6,11 +6,15 @@
 사용 (llm-comparison/ 에서):
     python3 harness/run.py --games pilot --dry-run          # 실행할 회차 목록만 출력
     python3 harness/run.py --games pilot --mock --reps 1    # API 없이 흐름 점검 (runs-mock/)
-    python3 harness/run.py --games pilot                    # 시범 실행 (runs/)
-    python3 harness/run.py --games main                     # 본 실행
+    python3 harness/run.py --models top --probe             # 구독 CLI 연결 확인 (짧은 2왕복, 기록 안 함)
+    python3 harness/run.py --games pilot --models light     # 시범 실행 (runs/)
+    python3 harness/run.py --games main --models top,light  # 본 실행: Claude 구독자
+    python3 harness/run.py --games main --models other-vendor --shard 1/2   # 본 실행: ChatGPT 구독자 1
+    python3 harness/run.py --games main --models other-vendor --shard 2/2   # 본 실행: ChatGPT 구독자 2
 
-API 키는 llm-comparison/.env 또는 환경 변수로 준다 (예: ANTHROPIC_API_KEY=...). .env는 커밋하지 않는다.
-이미 runs.jsonl에 있는 회차는 건너뛰므로, 중단돼도 같은 명령으로 이어서 돌리면 된다.
+모델은 experiment.toml의 backend에 따라 구독 CLI(claude-cli, codex-cli) 또는 API(litellm)로 부른다.
+기록은 사람마다 runs<-모델><-몫>.jsonl에 따로 쓴다. 이미 어느 기록 파일에든 있는 회차는 건너뛰므로,
+중단돼도 같은 명령으로 이어서 돌리면 된다.
 """
 from __future__ import annotations
 
@@ -25,6 +29,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 from dataclasses import dataclass, field
@@ -287,6 +292,232 @@ class LiteLLM:
 
 
 # ---------------------------------------------------------------------------
+# 구독 CLI 백엔드 (Claude Code, Codex)
+# ---------------------------------------------------------------------------
+# API 키 대신 각자의 구독 로그인으로 모델을 부른다. 변수 통제를 위해 두 CLI 모두:
+#   - 자체 시스템 프롬프트를 prompts/system.md로 바꾼다 (에이전트용 긴 지시문을 빼고 두 공급자에 같은 문장).
+#   - 도구(파일 읽기·명령 실행·웹)를 끄고, 빈 임시 폴더에서 돌린다. 모델이 직접 컴파일해 보는 일이 없게.
+#   - 사용자 설정(CLAUDE.md, AGENTS.md, 플러그인, MCP)을 읽지 않는다.
+#   - 왕복은 CLI의 세션 이어 가기로 같은 대화에 붙인다.
+LIMIT_ERROR = re.compile(r"usage limit|rate.?limit|limit reached|limit will reset|too many requests|\b429\b", re.I)
+CONTEXT_ERROR = re.compile(r"prompt is too long|context.?(length|window)|maximum context|input is too long", re.I)
+AUTH_ERROR = re.compile(r"authenticat|oauth|not logged in|log ?in again|unauthorized|\b401\b", re.I)
+
+
+class UsageLimitReached(Exception):
+    """구독 사용 한도에 걸려 기다리는 시간 상한을 넘김. 하니스를 멈추고 나중에 이어서 돌린다."""
+
+
+def toml_string(value: str) -> str:
+    return json.dumps(value)  # JSON 문자열은 TOML 기본 문자열로도 읽힌다 (codex -c 값)
+
+
+class CliBackend:
+    executable = ""
+    client = ""
+
+    def __init__(self, cfg: dict):
+        self.cfg = cfg
+        self.exe = shutil.which(self.executable)
+        if not self.exe:
+            sys.exit(f"{self.executable} 명령을 찾지 못함. 설치하고 구독 계정으로 로그인한다 (README).")
+        self.version = _first_line([self.exe, "--version"])
+        self.system_prompt = (BASE / "prompts" / "system.md").read_text(encoding="utf-8").strip()
+        self.sessions: dict[str, tuple[str, str]] = {}  # 회차 ID → (작업 폴더, 마지막으로 성공한 세션 ID)
+
+    def session(self, run: Run, messages: list[dict]) -> tuple[str, str | None, str]:
+        """(작업 폴더, 이어 갈 세션 ID 또는 None, 이번에 보낼 user 메시지)."""
+        if len(messages) == 1 or run.run_id not in self.sessions:
+            # 회차마다 빈 폴더에서 시작한다. 프로젝트 지시문(CLAUDE.md, AGENTS.md)이나 소스 파일이 없게.
+            return tempfile.mkdtemp(prefix=f"meno-exp-{run.run_id}-"), None, messages[0]["content"]
+        cwd, session_id = self.sessions[run.run_id]
+        return cwd, session_id, messages[-1]["content"]
+
+    def error_text(self, proc: subprocess.CompletedProcess) -> str | None:
+        raise NotImplementedError
+
+    def call(self, command: list[str], prompt: str, cwd: str, env: dict | None = None):
+        """CLI를 한 번 부른다. 프롬프트는 stdin으로 준다 (225KB라 명령줄 인자 한도를 넘음).
+        돌려줌: (프로세스, 경과 초, 재시도 횟수). 문맥 창 초과는 RunFailure, 로그인 문제는 멈춤."""
+        exp = self.cfg["experiment"]
+        wait_limit = exp.get("limit_wait_minutes", 30) * 60
+        give_up_at = time.monotonic() + exp.get("limit_wait_hours", 6) * 3600
+        retries = 0
+        while True:
+            start = time.monotonic()
+            try:
+                proc = subprocess.run(command, input=prompt, capture_output=True, text=True, encoding="utf-8",
+                                      cwd=cwd, env=env, timeout=exp["llm_timeout_seconds"])
+                error = self.error_text(proc)
+            except subprocess.TimeoutExpired:
+                error = f"{self.executable} 응답 시간 초과 ({exp['llm_timeout_seconds']}초)"
+                proc = None
+            elapsed = time.monotonic() - start
+            if error is None:
+                return proc, elapsed, retries
+            if CONTEXT_ERROR.search(error):
+                raise RunFailure("context_window", error[:500])
+            if AUTH_ERROR.search(error):
+                sys.exit(f"{self.executable} 로그인 문제: {error[:300]}\n다시 로그인한 뒤 같은 명령으로 이어서 돌린다.")
+            if LIMIT_ERROR.search(error):
+                # 한도는 결과와 무관하다. 회차를 새로 받지 않도록 같은 왕복을 기다렸다가 다시 보낸다.
+                if time.monotonic() + wait_limit > give_up_at:
+                    raise UsageLimitReached(error[:300])
+                print(f"  사용 한도: {wait_limit // 60}분 뒤 같은 왕복을 다시 보냄 ({error[:120]})", flush=True)
+                time.sleep(wait_limit)
+                retries += 1
+                continue
+            retries += 1
+            if retries > exp["api_retries"]:
+                raise RuntimeError(f"{self.executable} 오류가 계속됨: {error[:500]}")
+            wait = min(300, 10 * 2 ** retries)
+            print(f"  {self.executable} 오류, {wait}초 뒤 다시 시도: {error[:120]}", flush=True)
+            time.sleep(wait)
+
+
+class ClaudeCLI(CliBackend):
+    """Claude Code의 print 모드. 구독(Pro·Max) 로그인을 쓴다."""
+    executable = "claude"
+    client = "claude-code"
+    STOP = {"end_turn": "stop", "stop_sequence": "stop", "max_tokens": "length", "refusal": "refusal"}
+
+    def error_text(self, proc):
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            return (proc.stderr or proc.stdout or f"종료 코드 {proc.returncode}").strip()[-1000:]
+        if data.get("is_error"):
+            return f"{data.get('result', '')} (status {data.get('api_error_status')}, {data.get('terminal_reason')})"
+        return None
+
+    def complete(self, run: Run, messages: list[dict]) -> Reply:
+        exp = self.cfg["experiment"]
+        cwd, resume, prompt = self.session(run, messages)
+        command = [self.exe, "-p", "--output-format", "json",
+                   "--safe-mode",                  # CLAUDE.md, 스킬, 플러그인, 훅, MCP, 출력 스타일을 끔. 구독 로그인은 그대로
+                   "--tools", "",                  # 도구 모두 끔
+                   "--strict-mcp-config", "--disable-slash-commands",
+                   "--system-prompt", self.system_prompt,
+                   "--model", run.model["model"]]
+        if run.model.get("effort"):
+            command += ["--effort", run.model["effort"]]
+        if resume:
+            # 마지막으로 성공한 세션에서 갈라져 나온다. 실패한 호출을 다시 보내도 대화에 같은 메시지가 겹치지 않게.
+            command += ["--resume", resume, "--fork-session"]
+        env = os.environ | {"CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(exp["max_output_tokens"])}
+        env.pop("ANTHROPIC_API_KEY", None)  # 키가 있으면 구독 대신 API로 과금될 수 있다
+        proc, elapsed, retries = self.call(command, prompt, cwd, env)
+        data = json.loads(proc.stdout)
+        self.sessions[run.run_id] = (cwd, data["session_id"])
+        usage = data.get("usage", {})
+        cache_read = usage.get("cache_read_input_tokens") or 0
+        cache_write = usage.get("cache_creation_input_tokens") or 0
+        stop = data.get("stop_reason")
+        return Reply(
+            content=data.get("result") or "",
+            model=",".join(sorted(data.get("modelUsage", {}))) or run.model["model"],
+            # Anthropic의 input_tokens는 캐시 밖의 토큰만 센다. 비교 지표는 캐시와 무관한 원래 입력 토큰이므로 더한다.
+            prompt_tokens=(usage.get("input_tokens") or 0) + cache_read + cache_write,
+            completion_tokens=usage.get("output_tokens"),
+            cached_tokens=cache_read, cache_write_tokens=cache_write,
+            reasoning_tokens=(usage.get("output_tokens_details") or {}).get("thinking_tokens"),
+            cost=None,  # 구독이라 과금되지 않음. API로 샀다면 얼마였는지는 extra.cost_equiv_usd
+            finish_reason=self.STOP.get(stop, stop), refused=stop == "refusal",
+            latency_s=elapsed,
+            extra={"client": self.client, "client_version": self.version, "session_id": data["session_id"],
+                   "cost_equiv_usd": data.get("total_cost_usd"), "cli_retries": retries,
+                   "num_turns": data.get("num_turns")})
+
+
+class CodexCLI(CliBackend):
+    """Codex CLI의 exec 모드. ChatGPT 구독 로그인을 쓴다."""
+    executable = "codex"
+    client = "codex-cli"
+    TOOL_ITEMS = {"command_execution", "file_change", "mcp_tool_call", "web_search"}
+
+    def __init__(self, cfg: dict):
+        super().__init__(cfg)
+        # 사용자 전역 지시문(AGENTS.md)은 --ignore-user-config로도 빠지지 않는다. 있으면 실험 동안 옮겨 두게 한다.
+        home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+        found = [p for p in (home / "AGENTS.override.md", home / "AGENTS.md") if p.exists() and p.read_text().strip()]
+        if found:
+            sys.exit(f"Codex 전역 지시문이 있음: {', '.join(map(str, found))}\n"
+                     "모든 회차에 섞여 들어가므로, 실험 동안 다른 이름으로 옮겨 둔다.")
+        self.instructions = Path(tempfile.mkdtemp(prefix="meno-exp-codex-")) / "system.md"
+        self.instructions.write_text(self.system_prompt + "\n", encoding="utf-8")
+
+    def flags(self, run: Run) -> list[str]:
+        flags = ["--json", "--skip-git-repo-check", "--ignore-user-config", "--sandbox", "read-only",
+                 "-m", run.model["model"],
+                 "-c", "approval_policy=" + toml_string("never"),
+                 "-c", "web_search=" + toml_string("disabled"),
+                 "-c", "features.shell_tool=false",                       # 명령 실행 도구를 끔
+                 "-c", "model_instructions_file=" + toml_string(str(self.instructions))]  # 기본 지시문 대체
+        if run.model.get("effort"):
+            flags += ["-c", "model_reasoning_effort=" + toml_string(run.model["effort"])]
+        return flags
+
+    @staticmethod
+    def events(proc) -> list[dict]:
+        events = []
+        for line in (proc.stdout or "").splitlines():
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return events
+
+    def error_text(self, proc):
+        errors = []
+        for event in self.events(proc):
+            if event.get("type") == "error":
+                errors.append(str(event.get("message", event)))
+            elif event.get("type") == "turn.failed":
+                errors.append(str((event.get("error") or {}).get("message", event)))
+        if errors:
+            return " | ".join(errors)
+        if proc.returncode != 0:
+            return (proc.stderr or f"종료 코드 {proc.returncode}").strip()[-1000:]
+        return None
+
+    def complete(self, run: Run, messages: list[dict]) -> Reply:
+        cwd, resume, prompt = self.session(run, messages)
+        command = [self.exe, "exec", *self.flags(run)]
+        if resume:
+            command += ["resume", resume]
+        command.append("-")  # 프롬프트는 stdin
+        proc, elapsed, retries = self.call(command, prompt, cwd)
+        events = self.events(proc)
+        thread = next((e.get("thread_id") for e in events if e.get("type") == "thread.started"), None) or resume
+        self.sessions[run.run_id] = (cwd, thread)
+        items = [e.get("item", {}) for e in events if e.get("type") == "item.completed"]
+        messages_out = [i.get("text", "") for i in items if i.get("type") == "agent_message"]
+        usage = [e.get("usage", {}) for e in events if e.get("type") == "turn.completed"]
+
+        def total(key: str) -> int | None:
+            values = [u.get(key) for u in usage if u.get(key) is not None]
+            return sum(values) if values else None
+
+        return Reply(
+            content=messages_out[-1] if messages_out else "",
+            model=run.model["model"],  # Codex는 응답 모델 ID를 알려 주지 않는다
+            prompt_tokens=total("input_tokens"), completion_tokens=total("output_tokens"),
+            cached_tokens=total("cached_input_tokens"), reasoning_tokens=total("reasoning_output_tokens"),
+            finish_reason=None,  # Codex는 종료 사유를 알려 주지 않는다. 잘린 답은 코드 블록이 닫히지 않아 형식 오류로 잡힘
+            latency_s=elapsed,
+            extra={"client": self.client, "client_version": self.version, "session_id": thread,
+                   "cli_retries": retries,
+                   "tool_calls": sum(1 for i in items if i.get("type") in self.TOOL_ITEMS)})
+
+
+BACKENDS = {"litellm": LiteLLM, "claude-cli": ClaudeCLI, "codex-cli": CodexCLI}
+
+
+def model_undecided(model: dict) -> bool:
+    return "TBD" in model["id"] or model.get("model") == "TBD"
+
+
+# ---------------------------------------------------------------------------
 # 회차 실행
 # ---------------------------------------------------------------------------
 def template_versions(cfg: dict) -> dict:
@@ -321,6 +552,7 @@ def environment() -> dict:
 
 def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: int, context: dict) -> dict:
     exp = cfg["experiment"]
+    backend = "mock" if run.model["id"] == "mock" else run.model.get("backend", "litellm")
     run_dir = out_dir / run.run_id
     # runs.jsonl에 없는데 폴더가 있으면 이전 시도가 중간에 끊긴 것이다 (Ctrl-C, 전원, 하니스 설정 오류, API 장애).
     # 결과와 무관한 원인으로 끊긴 것이므로 다시 받되, 이전 시도를 지우지 않고 옮겨 두고 몇 번째 시도인지 기록한다.
@@ -363,6 +595,7 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
                   "latency_s": round(reply.latency_s, 2), "code_found": code is not None, "code_blocks": blocks}
         if reply.extra.get("refusal"):
             record["refusal_text"] = reply.extra["refusal"]
+        record |= {k: v for k, v in reply.extra.items() if k != "refusal"}  # CLI 버전, 세션, 재시도, 도구 호출 수 등
         if reply.refused:
             # 공급자가 거부를 알리면 바로 실패로 끝낸다. 같은 요청을 다시 보내도 대개 또 거부해 왕복만 쓴다.
             record["build_ok"] = False
@@ -433,8 +666,14 @@ def run_once(cfg: dict, run: Run, llm, out_dir: Path, skip_noinput: bool, seed: 
         "prompt_tokens": total("prompt_tokens"), "completion_tokens": total("completion_tokens"),
         "reasoning_tokens": total("reasoning_tokens"),
         "cached_tokens": total("cached_tokens"), "cache_write_tokens": total("cache_write_tokens"),
-        "prompt_cache": bool(exp.get("prompt_cache", False) and wants_cache_control(run.model["id"])),
-        "cost": total("cost"),
+        "backend": backend, "model_cli": run.model.get("model"), "effort": run.model.get("effort"),
+        "operator": run.model.get("operator"),
+        "client_versions": sorted({r["client_version"] for r in rounds if r.get("client_version")}),
+        # 구독 CLI는 스스로 캐시한다. litellm은 설정에 따라 Claude 계열에만 캐시 지점을 둔다.
+        "prompt_cache": True if backend != "litellm" else
+        bool(exp.get("prompt_cache", False) and wants_cache_control(run.model["id"])),
+        "cost": total("cost"), "cost_equiv_usd": total("cost_equiv_usd"),
+        "tool_calls": total("tool_calls"), "cli_retries": total("cli_retries"),
         "llm_latency_s": total("latency_s"), "code_lines": code_lines,
         "truncated_rounds": sum(1 for r in rounds if r.get("truncated")),
         "context_bytes": meta["context_bytes"], "hashes": meta["hashes"],
@@ -467,6 +706,10 @@ def main() -> None:
     parser.add_argument("--skip-noinput", action="store_true", help="무입력 실행을 건너뜀")
     parser.add_argument("--dry-run", action="store_true", help="실행할 회차 목록만 출력")
     parser.add_argument("--out", help="결과 폴더 (기본: 본 실행은 runs/main, 그 밖에는 runs/<게임 묶음>-<입력 해시>)")
+    parser.add_argument("--shard", help="K/N: 게임을 N몫으로 나눠 K번째만 돌림 (같은 모델을 여러 사람이 나눌 때). "
+                                        "한 게임의 두 조건·모든 반복은 같은 사람(같은 PC)에게 감")
+    parser.add_argument("--probe", action="store_true",
+                        help="고른 모델에 짧은 2왕복 대화를 보내 로그인·세션 이어 가기·토큰 기록·도구 꺼짐을 확인")
     args = parser.parse_args()
     main_run = args.games == "main" and not args.mock
 
@@ -481,10 +724,28 @@ def main() -> None:
     elif args.models != "all":
         wanted = set(args.models.split(","))
         models = [m for m in models if m["id"] in wanted or m.get("tier") in wanted]
-    if not args.mock and any(m["id"].startswith("TBD") for m in models):
-        sys.exit("experiment.toml의 모델 ID(TBD)를 먼저 정한다.")
+    if not models:
+        sys.exit(f"--models {args.models}에 맞는 모델이 없음")
+    if not args.mock and not args.dry_run and any(model_undecided(m) for m in models):
+        sys.exit("experiment.toml의 모델(TBD)을 먼저 정한다.")
+    for model in models:
+        if not args.mock and model.get("backend", "litellm") not in BACKENDS:
+            sys.exit(f"알 수 없는 backend: {model.get('backend')} ({model['id']})")
     reps = args.reps or exp["reps"]
     seed = exp["seed"]
+
+    backends: dict[str, object] = {}
+
+    def llm_for(model: dict):
+        if args.mock:
+            return backends.setdefault("mock", MockLLM(cfg, args.mock_fail_first))
+        kind = model.get("backend", "litellm")
+        if kind not in backends:
+            backends[kind] = BACKENDS[kind](cfg)
+        return backends[kind]
+
+    if args.probe:
+        sys.exit(0 if all(probe(cfg, model, llm_for(model)) for model in models) else 1)
 
     # 입력(설정, 지시문, 템플릿, 명세, 문맥, 에셋, 채점표, 하니스)의 해시. 본 실행은 동결 잠금과 같아야 시작한다.
     inputs = freeze.inputs_hash()
@@ -498,6 +759,16 @@ def main() -> None:
             sys.exit("본 실행은 동결 상태에서만 시작한다. harness/freeze.py write로 동결하거나 바뀐 입력을 되돌린다.")
 
     runs = plan_runs(cfg, games, conditions, models, reps, seed)
+    shard_tag = ""
+    if args.shard:
+        k, n = (int(x) for x in args.shard.split("/"))
+        if not 1 <= k <= n:
+            sys.exit("--shard는 1/2, 2/2처럼 K/N으로 준다.")
+        # 게임 단위로 나눈다. 같은 (모델, 게임)의 두 조건이 같은 PC에서 돌아야 빌드 시간·프레임 시간을 짝지어 비교할 수 있다.
+        mine = {g for i, g in enumerate(sorted(set(games))) if i % n == k - 1}
+        runs = [r for r in runs if r.game in mine]
+        shard_tag = f"-{k}of{n}"
+        print(f"shard {k}/{n}: 게임 {sorted(mine)}")
     # 시범 실행은 입력 해시별로 폴더를 나눈다. 명세나 지시문을 고친 뒤 다시 돌리면 새 폴더에 기록되므로,
     # 이전 결과 때문에 회차를 건너뛰지 않고, 서로 다른 입력의 결과가 한 기록에 섞이지 않는다.
     label = args.games if args.games in cfg["games"] else "custom"
@@ -507,28 +778,64 @@ def main() -> None:
         out_dir = BASE / "runs" / "main"
     else:
         out_dir = BASE / ("runs-mock" if args.mock else "runs") / f"{label}-{inputs[:8]}"
-    log_path = out_dir / "runs.jsonl"
-    records = []
-    if log_path.exists():
-        records = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+    # 사람마다 다른 기록 파일에 쓴다. 각자 커밋해도 git에서 충돌하지 않는다. 건너뛸 회차는 모든 기록 파일에서 찾는다.
+    who = "" if args.models == "all" else "-" + slug(args.models)
+    log_path = out_dir / f"runs{who}{shard_tag}.jsonl"
+    records = [json.loads(line) for path in sorted(out_dir.glob("runs*.jsonl"))
+               for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if any(r.get("inputs_sha256") != inputs for r in records):
         sys.exit(f"{out_dir}에 다른 입력으로 돌린 회차가 있다. 입력을 되돌리거나 다른 폴더(--out)를 쓴다.")
     done = {r["run_id"] for r in records}
     pending = [r for r in runs if r.run_id not in done]
-    print(f"회차 {len(runs)}개 중 남은 것 {len(pending)}개 → {out_dir}")
+    print(f"회차 {len(runs)}개 중 남은 것 {len(pending)}개 → {log_path}")
     if args.dry_run:
         for run in pending:
             print(f"  {run.order:3} {run.run_id}")
         return
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    llm = MockLLM(cfg, args.mock_fail_first) if args.mock else LiteLLM(cfg)
     context = {"inputs_sha256": inputs, "frozen": frozen, "environment": environment()}
-    for run in pending:
-        print(f"[{run.order + 1}/{len(runs)}] {run.run_id}", flush=True)
-        result = run_once(cfg, run, llm, out_dir, args.skip_noinput, seed, context)
+    for index, run in enumerate(pending, 1):
+        print(f"[{index}/{len(pending)}] {run.run_id}", flush=True)
+        try:
+            result = run_once(cfg, run, llm_for(run.model), out_dir, args.skip_noinput, seed, context)
+        except UsageLimitReached as error:
+            # 이 회차는 기록하지 않는다. 다음에 이어서 돌리면 끊긴 시도로 옮겨지고 attempt로 남는다.
+            sys.exit(f"\n사용 한도가 {exp.get('limit_wait_hours', 6)}시간 안에 풀리지 않음: {error}\n"
+                     f"한도가 풀린 뒤 같은 명령으로 이어서 돌린다. 남은 회차 {len(pending) - index + 1}개.")
         with log_path.open("a", encoding="utf-8") as log:
             log.write(json.dumps(result, ensure_ascii=False) + "\n")
+
+
+PROBE_CODE = "int main() { return 0; }"
+
+
+def probe(cfg: dict, model: dict, llm) -> bool:
+    """짧은 2왕복으로 CLI·API 연결을 확인한다. 실험 기록에는 남기지 않는다."""
+    run = Run(model, "probe", "probe", 0)
+    messages = [{"role": "user", "content": "아래 C++ 코드를 ```cpp 코드 블록 하나로 그대로 돌려주세요.\n\n"
+                                            f"```cpp\n{PROBE_CODE}\n```"}]
+    print(f"[probe] {model['id']} ({model.get('backend', 'litellm')})", flush=True)
+    first = llm.complete(run, messages)
+    messages += [{"role": "assistant", "content": first.content},
+                 {"role": "user", "content": "방금 돌려준 코드에 있는 함수의 이름만 한 단어로 답해 주세요."}]
+    second = llm.complete(run, messages)
+    code, _ = extract_code(first.content)
+    checks = {
+        "1왕복 코드 블록": code is not None and "main" in code,
+        "2왕복 대화 이어짐 (main이라고 답함)": "main" in second.content.lower(),
+        "입력·출력 토큰 기록": all(r.prompt_tokens and r.completion_tokens for r in (first, second)),
+        "도구 호출 없음": not any(r.extra.get("tool_calls") for r in (first, second)),
+    }
+    for reply in (first, second):
+        print(f"  model={reply.model} in={reply.prompt_tokens} cached={reply.cached_tokens} "
+              f"out={reply.completion_tokens} reasoning={reply.reasoning_tokens} finish={reply.finish_reason} "
+              f"{reply.latency_s:.1f}s extra={ {k: v for k, v in reply.extra.items() if k != 'session_id'} }")
+    for name, ok in checks.items():
+        print(f"  {'OK ' if ok else 'FAIL'} {name}")
+    if not checks["입력·출력 토큰 기록"]:
+        print("  주의: 토큰이 안 잡히면 토큰 지표를 쓸 수 없다. CLI 버전의 출력 형식을 확인한다.")
+    return all(checks.values())
 
 
 if __name__ == "__main__":

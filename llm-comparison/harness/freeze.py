@@ -106,8 +106,11 @@ def consistency_problems() -> list[str]:
         if actual != expected:
             problems.append(f"{bundle.relative_to(BASE)}가 manifest.json과 다름 (build_context.py로 다시 만들 것)")
 
-    if any(m["id"].startswith("TBD") for m in cfg["models"]):
-        problems.append("experiment.toml의 모델 ID가 아직 TBD")
+    if any("TBD" in m["id"] or m.get("model") == "TBD" for m in cfg["models"]):
+        problems.append("experiment.toml의 모델이 아직 TBD")
+    for m in cfg["models"]:
+        if m.get("backend", "litellm") != "litellm" and not m.get("effort"):
+            problems.append(f"{m['id']}의 effort가 없음. 구독 CLI는 기본 추론 수준이 바뀔 수 있어 고정한다")
     return problems
 
 

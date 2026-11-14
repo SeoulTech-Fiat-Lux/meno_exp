@@ -43,37 +43,62 @@ sudo apt-get install -y build-essential cmake git python3-pip xvfb ffmpeg x11-ut
 cd llm-comparison && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 ```
 
-API 키는 `llm-comparison/.env`에 둔다. 커밋하지 않는다.
+### 구독 CLI (D13)
 
+모델은 API 키가 아니라 각자의 구독으로 부른다. WSL 안에 CLI를 설치하고 구독 계정으로 로그인한다.
+
+- **Claude Max 구독자:** Claude Code를 설치하고 `claude`를 한 번 실행해 로그인한다. `ANTHROPIC_API_KEY`는 설정하지 않는다(있으면 하니스가 지우고 부름).
+- **ChatGPT Plus 구독자:** Codex CLI를 설치하고 `codex login`으로 ChatGPT 계정에 로그인한다. `~/.codex/AGENTS.md`가 있으면 실험 동안 다른 이름으로 옮겨 둔다(하니스가 확인하고 멈춤).
+
+먼저 각자 연결을 확인한다. 짧은 2왕복만 보내고 기록하지 않는다. 모든 줄이 `OK`여야 한다.
+
+```bash
+python3 harness/run.py --models top --probe            # Claude 구독자 (light도 같은 방법)
 ```
-ANTHROPIC_API_KEY=...
-OPENAI_API_KEY=...
+
+```bash
+python3 harness/run.py --models other-vendor --probe   # ChatGPT 구독자
 ```
+
+API로 돌릴 예산이 생기면 `experiment.toml`의 `backend`를 `litellm`으로 바꾸고, 키를 `llm-comparison/.env`에 둔다(커밋하지 않음).
 
 ## 실행
 
-모두 `llm-comparison/`에서 실행한다. 이미 `runs.jsonl`에 있는 회차는 건너뛰므로, 중단되면 같은 명령으로 이어서 돌린다.
+모두 `llm-comparison/`에서 실행한다. 이미 기록된 회차는 건너뛰므로, 중단되면 같은 명령으로 이어서 돌린다.
 중간에 끊긴 회차는 이전 폴더를 `<회차 ID>.interrupted-N`으로 옮겨 두고 다시 받으며, 몇 번째 시도인지 기록된다.
+구독 사용 한도에 걸리면 30분마다 같은 왕복을 다시 보내며 최대 6시간 기다린다. 그래도 안 풀리면 멈추니, 한도가 풀린 뒤 같은 명령을 다시 실행한다.
 
 ```bash
-python3 harness/run.py --games pilot --mock --mock-fail-first --reps 1   # API 없이 흐름 점검
+python3 harness/run.py --games pilot --mock --mock-fail-first --reps 1   # LLM 없이 흐름 점검
 ```
 
 ```bash
-python3 harness/run.py --games pilot --dry-run   # 실행할 회차 목록과 기록 폴더
+python3 harness/run.py --games pilot --models light --dry-run   # 실행할 회차 목록과 기록 파일
 ```
 
 ```bash
-python3 harness/run.py --games pilot             # 시범 실행 (퐁)
+python3 harness/run.py --games pilot --models light             # 시범 실행 (퐁)
+```
+
+본 실행(동결 상태에서만 시작)은 사람마다 자기 몫만 돌린다.
+
+```bash
+python3 harness/run.py --games main --models top,light                  # Claude Max 구독자: 48회차
 ```
 
 ```bash
-python3 harness/run.py --games main              # 본 실행 (동결 상태에서만 시작)
+python3 harness/run.py --games main --models other-vendor --shard 1/2   # ChatGPT Plus 구독자 1: 12회차
 ```
 
+```bash
+python3 harness/run.py --games main --models other-vendor --shard 2/2   # ChatGPT Plus 구독자 2: 12회차
+```
+
+- **기록 파일:** 사람마다 `runs/main/runs-<모델>[-<몫>].jsonl`에 따로 쓴다. 하니스는 모든 기록 파일을 읽어 이미 끝난 회차를 건너뛴다.
+- **결과 모으기:** 채점 전에 각자 `runs/main/`을 압축해(실행 파일 `game` 포함) 블라인드 묶음을 만드는 사람에게 git 밖으로 보낸다. 그 사람이 하나의 `runs/main/`에 합친 뒤 `grading/blind.py`를 돌린다.
 - **기록 폴더:** 본 실행은 `runs/main/`이다. 시범 실행과 mock은 `runs/pilot-<입력 해시>/`, `runs-mock/pilot-<입력 해시>/`처럼 입력별로 나뉜다. 명세·지시문 등을 고친 뒤 다시 돌리면 새 폴더에 처음부터 기록된다.
 - **빌드 시간:** 조건마다 처음 한 번은 meno·SFML을 내려받아 빌드한다(4코어에서 1분 안팎). 그 뒤 회차마다 `main.cpp`만 바꿔 다시 빌드한다(약 2초).
-- **출력 길이:** 모든 모델에 `experiment.toml`의 `max_output_tokens`를 같은 상한으로 준다. 길이 제한으로 잘린 답은 회차 기록에 따로 표시된다.
+- **출력 길이:** `experiment.toml`의 `max_output_tokens`를 상한으로 준다(Codex는 줄 방법이 없음). 길이 제한으로 잘린 답은 회차 기록에 따로 표시된다.
 - **push 시점:** `runs/`는 채점이 끝난 뒤에 push한다. 먼저 올리면 채점자가 코드와 조건을 볼 수 있다.
 
 ## 채점
