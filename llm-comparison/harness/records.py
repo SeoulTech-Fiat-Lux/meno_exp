@@ -1,7 +1,7 @@
 """회차 계획과 회차 기록의 형식. 회차를 만들거나 기록을 읽는 곳은 모두 이 모듈을 쓴다.
 
 회차 = (모델, 게임, 조건, 반복 번호). 회차 ID 규칙과 회차 계획(섞는 순서)은 여기 한 곳에만 둔다.
-하니스(run.py)가 회차를 돌려 기록을 쓰고, 결과 합치기(grading/merge_runs.py)는 같은 계획과 대조하며,
+하니스(run.py)가 회차를 돌려 기록을 쓰고, 결과 합치기(grading/merge_runs.py)가 같은 계획과 대조하며,
 시범 요약(analysis/summarize.py), 분석(analysis/analyze.py, errors.py), 블라인드 묶음(grading/blind.py)이 기록을 읽는다.
 필드를 바꾸거나 지우면 SCHEMA_VERSION을 올리고, 읽는 쪽을 함께 고친다.
 
@@ -16,7 +16,7 @@
 형식 버전:
     1  첫 형식 (시범 실행 pilot-e1712ed0까지)
     2  API(LiteLLM) 백엔드를 뺐다. cost, model_params, prompt_cache, versions.litellm, rounds_detail[].refusal_text를 지웠다.
-       읽는 쪽이 기대는 필드는 그대로이므로 버전 1도 그대로 읽는다.
+       읽는 쪽이 기대는 필드는 바뀌지 않았으므로 버전 1도 그대로 읽는다.
 """
 from __future__ import annotations
 

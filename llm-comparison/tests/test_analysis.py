@@ -21,6 +21,14 @@ assert abs(a["agreement"] - 0.9) < 1e-12
 assert abs(a["kappa"] - (0.16 / 0.26)) < 1e-9, a
 q = 0.85; pe = 2 * q * (1 - q); assert abs(a["ac1"] - (0.9 - pe) / (1 - pe)) < 1e-9
 
+# --- sensitivity (model-clustered pairs)
+d = {("m1", f"g{i}"): 0.1 for i in range(6)} | {("m2", f"g{i}"): 0.2 for i in range(6)} | {("m3", f"g{i}"): 0.05 for i in range(6)}
+s = analyze.sensitivity(d, 1)
+assert s["robust"] and s["per_model"]["m1"]["pos"] == 6 and s["leave_out"]["m3"]["pairs"] == 12, s
+lo, hi = s["stratified"]["mean_ci"]; assert abs(lo - hi) < 1e-12 and abs(lo - 0.35 / 3) < 1e-9, s["stratified"]
+d[("m3", "g0")] = d[("m3", "g1")] = -0.5  # one model flips: mean of m3 < 0
+assert not analyze.sensitivity(d, 1)["robust"]
+
 # --- error classifier
 assert errors.classify("main.cpp:10:15: error: 'class sf::Event' has no member named 'type'", "sfml")[0] == "sfml2_api"
 assert errors.classify("main.cpp:3:10: fatal error: SFML/Graphics.hpp: No such file or directory", "meno")[0] == "sfml_in_meno"
@@ -77,17 +85,11 @@ for d in ids:
     for i, sheet in enumerate(sorted(d.glob("sheet-*.csv"))):
         rows = list(csv.DictReader(open(sheet, encoding="utf-8-sig")))
         for r in rows:
-            if r["how"] != "play":
-                continue
-            t = item_truth.setdefault(r["id"], rng.random() < qlt)
+            t =item_truth.setdefault(r["id"], rng.random() < qlt)
             v = t if (i == 0 or rng.random() > 0.05) else (not t)
             r["result"] = "통과" if v else "실패"
         with open(sheet, "w", encoding="utf-8-sig", newline="") as f:
             wr = csv.DictWriter(f, fieldnames=list(rows[0])); wr.writeheader(); wr.writerows(rows)
-    for meta in d.glob("meta-*.csv"):
-        with open(meta, "w", encoding="utf-8-sig", newline="") as f:
-            wr = csv.writer(f); wr.writerow(["guess_condition", "confidence", "minutes", "note"])
-            wr.writerow([rng.choice(["meno", "sfml", "모름"]), "2", "14", ""])
 
 results = tmp / "results"
 collect.agree(blind_dir, results)
@@ -105,8 +107,6 @@ with open(results / "disagreements.csv", "w", encoding="utf-8-sig", newline="") 
 collect.final(blind_dir, results, mapping)
 scores = list(csv.DictReader(open(results / "run_scores.csv", encoding="utf-8-sig")))
 assert len(scores) == len(ids) and all(0 <= float(s["pass_rate"]) <= 1 for s in scores)
-bl = list(csv.DictReader(open(results / "blinding.csv", encoding="utf-8-sig")))
-assert len(bl) == 2 * len(ids) and {b["truth"] for b in bl} == {"meno", "sfml"}
 agreement = json.loads((results / "agreement.json").read_text(encoding="utf-8"))
 assert 0.9 < agreement["전체"]["agreement"] < 1.0, agreement["전체"]
 
@@ -115,9 +115,37 @@ out = tmp / "analysis"
 analyze.analyze(runs, str(results / "run_scores.csv"), out)
 report = (out / "report.md").read_text(encoding="utf-8")
 assert "1차 지표" in report and "Holm" in report and "sfml2_api" in report and "meno_api" in report
+assert "민감도 분석" in report and "층화 부트스트랩" in report and "판정:" in report, report
+# 읽기용 형식: 맨 위 요약, 비율은 %, 차이는 %p, 컴퓨터마다 다른 절대 경로는 찍지 않는다
+assert report.index("## 요약") < report.index("## 1차 지표") and "1차 지표(요구사항 통과율" in report, report
+assert "%p" in report and "%" in report and str(tmp) not in report, report
+assert "![" not in report  # 그림이 없으면 링크도 없다
 cells = list(csv.DictReader(open(out / "cells.csv", encoding="utf-8-sig")))
 primary = [float(c["diff"]) for c in cells if c["metric"] == "pass_all"]
 assert len(primary) == 18 and sum(primary) / 18 > 0, primary  # meno built/passes more in synthetic data
+assert "채점하지 못한 회차가 있는 셀을 뺀" not in report  # 모두 채점됐으면 이 절은 없다
+# 채점하지 못한 회차: 그 셀을 통째로 뺀 결과가 따로 나온다 (본 결과는 남은 회차로 낸 셀 평균)
+score_rows = list(csv.DictReader(open(results / "run_scores.csv", encoding="utf-8-sig")))
+graded = {r["run_id"] for r in score_rows}
+built = [r for r in analyze.load_records(runs) if r["build_success"] and r["run_id"] in graded]
+gone = built[0]
+partial = tmp / "partial_scores.csv"
+with open(partial, "w", encoding="utf-8-sig", newline="") as f:
+    wr = csv.DictWriter(f, fieldnames=list(score_rows[0])); wr.writeheader()
+    wr.writerows(r for r in score_rows if r["run_id"] != gone["run_id"])
+(tmp / "partial" / "figures").mkdir(parents=True)
+(tmp / "partial" / "figures" / "1-primary-pairs.png").write_bytes(b"png")  # figures.py를 먼저 돌린 경우
+analyze.analyze(runs, str(partial), tmp / "partial")
+partial_report = (tmp / "partial" / "report.md").read_text(encoding="utf-8")
+assert "채점하지 못한 회차가 있는 셀을 뺀 결과" in partial_report, partial_report
+assert "![셀별 요구사항 통과율](figures/1-primary-pairs.png)" in partial_report and "2-effects.png" not in partial_report
+assert f"{gone['model_requested']} × {gone['game']}" in partial_report
+recs = analyze.load_records(runs)
+part_scores = analyze.load_scores(str(partial))
+assert analyze.ungraded_cells(recs, part_scores) == {(gone["model_requested"], gone["game"])}
+cells_p, results_p = analyze.compute(recs, part_scores, 1)
+dropped_rows = analyze.without_cells(cells_p, results_p, analyze.ungraded_cells(recs, part_scores), 1)
+assert dropped_rows["pass_all"]["pairs"] == results_p["pass_all"]["pairs"] - 1, dropped_rows["pass_all"]
 # pre-grading mode
 analyze.analyze(runs, "-", tmp / "pre")
 assert "채점 결과 없이" in (tmp / "pre" / "report.md").read_text(encoding="utf-8")

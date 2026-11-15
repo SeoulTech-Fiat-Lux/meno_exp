@@ -1,4 +1,4 @@
-"""사전 등록한 분석(PLAN 2.4절)의 결과를 그림으로 그린다. 계산은 analyze.compute()를 그대로 쓴다.
+"""사전 등록한 분석(PLAN 3절)의 결과를 그림으로 그린다. 계산은 analyze.compute()를 그대로 쓴다.
 
 사용 (llm-comparison/ 에서, matplotlib 필요: pip install -r analysis/requirements.txt):
     python3 analysis/figures.py runs/main grading/results/run_scores.csv analysis/results
@@ -11,7 +11,7 @@
 숫자 표는 analyze.py의 report.md와 cells.csv에 있다. 그림 글자는 영어다 (한글 글꼴 없이 어디서나 같게 그리려고).
 
 색은 dataviz 기본 팔레트(밝은 모드)이고 benchmark/style.py와 같은 값이다. 조건 두 색(파랑 meno, 주황 SFML)은
-겹쳐 그려도 색각 이상 대비 구분이 검증된 앞 두 칸이다. 오류 유형은 이웃한 칸만 구분되면 되는 누적 막대라 다섯 칸을 쓴다.
+겹쳐 그려도 색각 이상에서 구분된다고 검증된 앞 두 칸이다. 오류 유형은 이웃한 칸만 구분되면 되는 누적 막대라 다섯 칸을 쓴다.
 """
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ SCORED = {"pass_all", "pass_built", "complete"}  # 채점 결과가 있어야 �
 def effects(plt, results: dict, out: Path, graded: bool) -> None:
     # 채점 전에는 통과율 지표를 그리지 않는다. 빌드 실패(0)만 남은 반쪽 값이라 잘못 읽힌다.
     rate_rows = [results[k] | {"name": RATE_NAME[k]} for k in RATES if k in results and (graded or k not in SCORED)]
-    fig = plt.figure(figsize=(10, 3.4 + 0.6 * len(rate_rows)))  # 줄 수에 맞춘 높이 (채점 전 2줄, 뒤 5줄)
+    fig = plt.figure(figsize=(10, 3.4 + 0.6 * len(rate_rows)))  # 줄 수에 맞춘 높이 (채점 전 2줄, 채점 뒤 5줄)
     grid = fig.add_gridspec(2, 2, height_ratios=[len(rate_rows), 1.4], hspace=0.8, wspace=0.12)
     forest(fig.add_subplot(grid[0, :]), rate_rows, 100, "+.1f",
            "meno − SFML, percentage points (right = meno higher)", "Rates", unit=" pp")

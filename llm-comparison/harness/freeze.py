@@ -11,7 +11,7 @@
 - 템플릿의 meno 커밋과 문맥 목록(manifest.json)의 meno 커밋이 같다 (빌드하는 코드와 LLM에게 주는 문서가 같은 버전이어야 한다).
 - 두 템플릿의 SFML 커밋이 manifest.json의 SFML/SFML 커밋과 같다 (두 조건이 같은 SFML로 빌드되어야 한다).
 - 템플릿의 모든 GIT_TAG가 40자리 커밋 해시다.
-- 동결 전에 끝낼 일을 마쳤다: specs/sim/ 시뮬레이션 스크립트(D8)가 있고, 채점표 항목 문장이 지금 명세와 같다.
+- 동결 전에 끝낼 일을 마쳤다: specs/sim/ 시뮬레이션 스크립트(D7)가 있고, 채점표 항목 문장이 지금 명세와 같다.
 - 문맥 묶음의 출처 머리글이 manifest.json의 저장소·커밋·파일 목록과 같다 (목록을 바꾸고 묶음을 다시 만들지 않은 경우를 잡는다).
 - 모델마다 model(TBD 아님), 구독 CLI backend, effort가 정해져 있다.
 """
@@ -32,7 +32,7 @@ import records  # noqa: E402
 
 LOCK = BASE / "freeze.lock.json"
 # harness/는 폴더째 잠근다. 회차 결과를 바꾸는 코드만 이 폴더에 둔다 (결과를 읽는 도구는 analysis/, 채점은 grading/).
-# 파일을 하나하나 적으면, 새 모듈을 만들고 목록에 넣는 것을 잊었을 때 동결 검사를 조용히 빠져나간다.
+# 파일을 하나하나 적으면, 새 모듈을 목록에 넣는 것을 잊었을 때 그 모듈이 동결 검사를 조용히 빠져나간다.
 FROZEN = [
     "experiment.toml", "prompts", "templates", "specs/games",
     "contexts/manifest.json", "contexts/bundles", "assets", "grading/sheets",
@@ -76,7 +76,7 @@ def template_tags(cfg: dict) -> dict[str, dict[str, str]]:
             for c, cond in cfg["conditions"].items()}
 
 
-# rationale.md의 무입력 실행 근거가 가리키는 시뮬레이션 스크립트 (D8). 동결 태그에 함께 남아야 수치를 다시 확인할 수 있다.
+# rationale.md의 무입력 실행 근거가 가리키는 시뮬레이션 스크립트 (D7). 동결 태그에 함께 남아야 수치를 다시 확인할 수 있다.
 # 게임 → 무입력 기준을 낸 스크립트. 실험에 쓰는 게임(games.main, games.pilot)의 것만 요구한다.
 # 나머지 게임은 rationale.md에 계산식으로 근거가 있어 스크립트가 필요 없다.
 SIM_SCRIPTS = {
@@ -94,9 +94,15 @@ def prerequisite_problems(cfg: dict) -> list[str]:
     used = [*cfg["games"]["main"], *cfg["games"].get("pilot", [])]
     missing = [SIM_SCRIPTS[g] for g in used if g in SIM_SCRIPTS and not (BASE / "specs" / "sim" / SIM_SCRIPTS[g]).exists()]
     if missing:
-        problems.append(f"specs/sim/에 시뮬레이션 스크립트가 없음: {', '.join(missing)} (D8)")
-    # 채점표의 모든 항목 문장이 지금 명세에 있어야 한다. 명세를 고치고 채점표를 다시 만들지 않은 경우를 잡는다.
-    # 팀이 항목을 합칠 때는 make_sheets.py처럼 명세 문장을 " / "로 이어 붙이므로, 조각마다 명세에 있는지 본다.
+        problems.append(f"specs/sim/에 시뮬레이션 스크립트가 없음: {', '.join(missing)} (D7)")
+    # 채점표(<게임>.csv)의 requirement는 채점자가 확인할 문장이고, 그 항목의 명세 문장은 items.csv의 spec에 있다.
+    # items.csv의 모든 명세 문장이 지금 명세에 있어야 한다. 명세를 고치고 채점표를 다시 만들지 않은 경우를 잡는다.
+    # 팀이 항목을 합칠 때는 명세 문장을 " / "로 이어 붙이므로, 조각마다 명세에 있는지 본다.
+    items_path = BASE / "grading" / "sheets" / "items.csv"
+    all_items = []
+    if items_path.exists():
+        with items_path.open(encoding="utf-8-sig", newline="") as f:
+            all_items = list(csv.DictReader(f))
     for game in used:
         sheet = BASE / "grading" / "sheets" / f"{game}.csv"
         spec = BASE / "specs" / "games" / f"{game}.md"
@@ -105,11 +111,16 @@ def prerequisite_problems(cfg: dict) -> list[str]:
             continue
         text = " ".join(spec.read_text(encoding="utf-8").split())
         with sheet.open(encoding="utf-8-sig", newline="") as f:
-            stale = [row["id"] for row in csv.DictReader(f)
-                     if any(" ".join(part.split()) not in text for part in row["requirement"].split(" / "))]
+            sheet_ids = [row["id"] for row in csv.DictReader(f)]
+        rows = [row for row in all_items if row["game"] == game]
+        play_ids = [row["id"] for row in rows if row["how"] == "play"]
+        if play_ids != sheet_ids:
+            problems.append(f"grading/sheets/{game}.csv의 항목 ID가 items.csv의 play 항목과 다름")
+        stale = [row["id"] or row["spec"][:20] for row in rows
+                 if any(" ".join(part.split()) not in text for part in row["spec"].split(" / "))]
         if stale:
-            problems.append(f"grading/sheets/{game}.csv의 항목 {len(stale)}개가 지금 명세 문장과 다름 "
-                            f"(예: {', '.join(stale[:3])}). 명세를 고쳤다면 채점표를 다시 만든다")
+            problems.append(f"grading/sheets/items.csv의 {game} 항목 {len(stale)}개가 지금 명세 문장과 다름 "
+                            f"(예: {', '.join(stale[:3])}). 명세를 고쳤다면 items.csv와 채점표를 함께 고친다")
     return problems
 
 
@@ -125,7 +136,7 @@ def consistency_problems() -> list[str]:
         problems.append(f"템플릿의 meno 커밋({meno_tag[:7] if meno_tag else '없음'})과 "
                         f"manifest.json의 meno 커밋({manifest_meno[:7]})이 다름")
 
-    # 두 조건이 같은 SFML 커밋으로 빌드되고, LLM에게 주는 SFML readme도 그 커밋에서 나와야 한다.
+    # 두 조건은 같은 SFML 커밋으로 빌드되어야 하고, LLM에게 주는 SFML readme도 그 커밋에서 나와야 한다.
     manifest_sfml = next((s["commit"] for s in manifest["sfml"] if s["repo"] == "SFML/SFML"), None)
     for condition in ("meno", "sfml"):
         sfml_tag = tags[condition].get("SFML")
@@ -163,7 +174,7 @@ def consistency_problems() -> list[str]:
 
 
 def check(verbose: bool = True) -> bool:
-    """잠금 파일이 있고 현재 입력이 같으면 True."""
+    """잠금 파일이 있고 현재 입력이 잠금과 같으면 True."""
     ok = True
     for problem in consistency_problems():
         ok = False

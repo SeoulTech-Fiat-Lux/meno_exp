@@ -1,6 +1,6 @@
 """LLM 호출: 구독 CLI 백엔드(Claude Code, Codex)와 mock, 연결 확인(probe).
 
-API 키 대신 각자의 구독 로그인으로 CLI를 부른다 (PLAN D13). 변수를 통제하기 위해 두 CLI 모두 다음과 같이 돌린다:
+API 키 대신 각자의 구독 로그인으로 CLI를 부른다 (docs/harness.md "구독 CLI"). 변수를 통제하기 위해 두 CLI 모두 다음과 같이 돌린다:
   - 자체 시스템 프롬프트를 prompts/system.md로 바꾼다 (에이전트용 긴 지시문을 빼고, 두 공급자에 같은 문장을 준다).
   - 도구(파일 읽기·명령 실행·웹)를 끄고, 빈 임시 폴더에서 돌린다. 모델이 직접 컴파일해 볼 수 없게 하려는 것이다.
   - 사용자 설정(CLAUDE.md, AGENTS.md, 플러그인, MCP)을 읽지 않는다.
@@ -98,7 +98,7 @@ class MockLLM:
 LIMIT_ERROR = re.compile(r"usage limit|rate.?limit|limit reached|limit will reset|too many requests|\b429\b", re.I)
 CONTEXT_ERROR = re.compile(r"prompt is too long|context.?(length|window)|maximum context|input is too long", re.I)
 AUTH_ERROR = re.compile(r"authenticat|oauth|not logged in|log ?in again|unauthorized|\b401\b", re.I)
-# CLI가 명령줄을 거부한 경우 (없는 플래그, 잘못된 설정 키·값). 다시 보내도 같으므로 기다리지 않고 바로 멈춘다.
+# CLI가 명령줄을 거부한 경우 (없는 플래그, 잘못된 설정 키·값). 다시 보내도 결과가 같으므로 기다리지 않고 바로 멈춘다.
 USAGE_ERROR = re.compile(r"unexpected argument|unrecognized (option|argument|subcommand)|"
                          r"unknown (option|argument|flag|field|key|feature|variant)|invalid value|"
                          r"error parsing|failed to parse|^Usage: |For more information, try '--help'", re.I | re.M)
@@ -140,7 +140,7 @@ class CliBackend:
     def call(self, command: list[str], prompt: str, cwd: str, env: dict | None = None):
         """CLI를 한 번 부르고 (프로세스, 경과 초, 재시도 횟수)를 돌려준다.
         프롬프트는 225KB로 명령줄 인자 한도를 넘으므로 stdin으로 준다.
-        문맥 창 초과는 RunFailure를 던지고, 사용 한도에 걸리면 기다렸다가 같은 왕복을 다시 보내며, 로그인·명령줄 문제는
+        문맥 창을 넘으면 RunFailure를 던지고, 사용 한도에 걸리면 기다렸다가 같은 왕복을 다시 보내며, 로그인·명령줄 문제면
         바로 멈춘다. 그 밖의 오류(서버 오류, 시간 초과)는 api_retries번까지 다시 보낸다."""
         exp = self.cfg["experiment"]
         wait_limit = exp.get("limit_wait_minutes", 30) * 60

@@ -19,7 +19,7 @@ def main() -> None:
     run_dir = Path(sys.argv[1])
     skip = int(sys.argv[2]) if len(sys.argv) > 2 else 60
     dump = run_dir / "frametime" / "frametime_(ms)"
-    # 게임이 OpenGL 문맥을 만들기 전에 죽으면 Mesa HUD가 덤프를 남기지 않는다. 멈추지 않고 그 사실을 기록한다.
+    # 게임이 OpenGL 문맥을 만들기 전에 죽으면 Mesa HUD가 덤프를 남기지 않는다. 이때는 멈추지 않고 그 사실을 기록한다.
     raw = dump.read_text().split() if dump.exists() else []
     values = [float(line) for line in raw if line.strip()][skip:]
     stats = {"frames": len(values), "frametime_dump": dump.exists()}

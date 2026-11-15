@@ -13,7 +13,7 @@
     python3 harness/run.py --games main --models other-vendor --shard 2/2   # 본 실행: ChatGPT 구독자 2
 
 모듈: records.py(회차 계획과 기록 형식), llm.py(구독 CLI 백엔드), freeze.py(동결 잠금). 설정은 experiment.toml 하나다.
-기록은 사람마다 runs<-모델><-몫>.jsonl에 따로 쓴다. 이미 어느 기록 파일에든 있는 회차는 건너뛰므로,
+기록은 사람마다 runs-<모델>[-<몫>].jsonl에 따로 쓴다. 이미 어느 기록 파일에든 있는 회차는 건너뛰므로,
 중단돼도 같은 명령으로 이어서 돌리면 된다.
 """
 from __future__ import annotations
@@ -189,7 +189,7 @@ def run_once(cfg: dict, run: Run, model_llm, out_dir: Path, skip_noinput: bool, 
         try:
             reply = model_llm.complete(run, messages)
         except llm.RunFailure as error:
-            # 문맥 창 초과: 다시 보내도 같으므로 이 왕복을 실패로 남기고 회차를 끝낸다.
+            # 문맥 창 초과: 다시 보내도 결과가 같으므로 이 왕복을 실패로 남기고 회차를 끝낸다.
             rounds.append({"round": number, "build_ok": False, "api_failure": error.reason,
                            "refused": False, "code_found": False})
             failure, failure_detail = error.reason, error.detail
@@ -371,7 +371,7 @@ def main() -> None:
             measure_context(cfg, model, llm_for(model), conditions)
         return
 
-    # 입력(설정, 지시문, 템플릿, 명세, 문맥, 에셋, 채점표, 하니스)의 해시. 본 실행은 동결 잠금과 같아야 시작한다.
+    # 입력(설정, 지시문, 템플릿, 명세, 문맥, 에셋, 채점표, 하니스)의 해시. 본 실행은 이 해시가 동결 잠금과 같아야 시작한다.
     inputs = freeze.inputs_hash()
     lock = json.loads(freeze.LOCK.read_text(encoding="utf-8")) if freeze.LOCK.exists() else None
     frozen = lock is not None and lock["inputs_sha256"] == inputs

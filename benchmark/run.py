@@ -10,7 +10,7 @@
     python3 run.py                         # 빌드 후 측정 (results/<날짜>-<meno 커밋>-<GPU>/)
     python3 run.py --bin <실행 파일>       # 이미 빌드한 실행 파일로 측정
 
-이미 기록된 (대상, N, 반복)은 건너뛰므로, 중단돼도 같은 명령(같은 --out)으로 이어서 돌릴 수 있다.
+이미 기록된 (대상, N, 반복)은 건너뛰므로, 중단되어도 같은 명령(같은 --out)으로 이어서 돌릴 수 있다.
 """
 from __future__ import annotations
 
@@ -138,7 +138,7 @@ def main() -> None:
     if args.reps:
         cfg["sweep"]["reps"] = args.reps
 
-    # 렌더러는 결과 폴더 이름(GPU)에 쓰이고, 빌드에 몇 분 쓰기 전에 확인도 한다.
+    # 렌더러는 결과 폴더 이름(GPU)에 쓰이며, 빌드에 몇 분을 들이기 전에 미리 확인한다.
     sweep, run_cfg = cfg["sweep"], cfg["run"]
     proc_env = run_env(cfg)
     gl = {} if args.mock else gl_info(proc_env)
@@ -171,7 +171,7 @@ def main() -> None:
         preflight(binary, cfg, proc_env, HERE / "work" / "preflight")
 
     (out / "raw").mkdir(parents=True, exist_ok=True)
-    # 환경은 처음 한 번만 기록한다. 이어서 돌릴 때 다른 PC에서 돌리면 결과가 섞이므로, 기록된 환경과 비교해 다르면 멈춘다.
+    # 환경은 처음 한 번만 기록한다. 이어서 돌리는 PC가 다르면 결과가 섞이므로, 기록된 환경과 비교해 다르면 멈춘다.
     env_path = out / "env.json"
     env = environment(None if args.mock or args.bin else build_dir, gl)
     if env_path.exists():

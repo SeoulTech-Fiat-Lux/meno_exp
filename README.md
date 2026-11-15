@@ -1,123 +1,254 @@
 # meno_exp
 
-meno 실험 저장소. 공개 저장소 SeoulTech-Fiat-Lux/Meno의 다음 이슈를 위한 자료를 둔다.
+SeoulTech-Fiat-Lux/Meno의 실험 자료.
 
-- SeoulTech-Fiat-Lux/Meno#29 LLM 생성 비교 실험
-- SeoulTech-Fiat-Lux/Meno#30 성능 측정 (측정 프로그램, 실행기, 결과 보고서를 모두 둠. Meno는 동결 커밋을 받아 고치지 않고 잼. [benchmark/README.md](benchmark/README.md))
-
-실험 설계와 정한 사항(D1–D12)은 [PLAN.md](PLAN.md)에 있다.
+- Meno#29 LLM 생성 비교 실험: 계획 [PLAN.md](PLAN.md), 운영 규칙 [docs/harness.md](docs/harness.md)
+- Meno#30 성능 측정: [benchmark/README.md](benchmark/README.md)
 
 ## 구성
 
 ```
-PLAN.md                     실행 계획과 결정 사항
-docs/pilot-2026-11-14.md    시범 실행 보고 (결과, 고친 문제, 남은 확인)
-LICENSES.md                 라이선스와 출처
+PLAN.md                     계획, 결정, 할 일
+docs/                       운영 규칙(harness.md), 시범 보고, 검증 캡처
+LICENSE                     코드 라이선스 (zlib). 폴더별 예외는 아래 "라이선스와 출처"
 llm-comparison/
   experiment.toml           실험 설정 (게임, 조건, 모델, 반복·왕복 수)
-  specs/                    요구사항 (games/*.md가 LLM 입력 원본), 변경 기록, 발표용 pptx
-  assets/                   에셋 52종과 폰트 라이선스, assets-spec.xlsx
+  specs/                    요구사항 (games/*.md가 LLM 입력 원본), 계산 근거
+  assets/                   에셋 52종
   templates/{meno,sfml}/    빌드 템플릿 (LLM은 main.cpp만 작성)
-  contexts/                 조건별 문맥 규칙(manifest.json), 묶음 생성기, 묶음(bundles/)
-  freeze.lock.json          동결 잠금 (동결 때 생성. 본 실행은 이 파일과 입력이 같아야 시작)
-  prompts/                  지시문, 빌드 오류·형식 오류·길이 초과 피드백 문구
-  harness/                  회차 결과를 바꾸는 코드만 (폴더째 동결): run.py(회차 실행), llm.py(구독 CLI 호출),
-                            records.py(회차 계획과 기록 형식), freeze.py(동결 잠금), run_noinput.sh(무입력 실행·녹화),
-                            frametime_stats.py
-  grading/                  채점: 채점표(sheets/), 채점표 생성기, 블라인드 묶음(blind.py), 채점 집계(collect.py)
-  analysis/                 결과 읽기: 시범 요약(summarize.py), 사전 등록 분석(analyze.py), 빌드 오류 분류(errors.py),
-                            그림(figures.py, matplotlib), 대표작(showcase.py), 무입력 녹화 장면 모음(contact_sheet.sh)
-  tests/                    가짜 출력으로 하니스·채점·분석을 확인하는 테스트 (python3 tests/run_all.py)
-  smoke/                    템플릿 점검용 프로그램
-  runs/                     회차 결과 (사람마다 runs-*.jsonl, 회차별 폴더)
-benchmark/                  #30 성능 측정: bench_app/(측정 프로그램), bench.toml(조건), run.py(실행기), 요약·그림·Tracy·보고서 도구, results/(결과와 보고서)
+  contexts/                 조건별 문맥 목록과 묶음
+  prompts/                  지시문과 피드백 문구
+  harness/                  회차 실행 코드 (폴더째 동결)
+  grading/                  채점표, 블라인드 묶음, 집계
+  analysis/                 요약, 사전 등록 분석, 그림, 대표작
+  tests/                    LLM 없이 하니스·채점·분석 확인
+  smoke/                    템플릿 점검용 프로그램 (mock 실행의 답으로도 씀)
+  runs/                     회차 결과
+benchmark/                  #30 성능 측정
 ```
 
-## 준비 (Ubuntu 24.04 또는 WSL2의 Ubuntu 24.04)
+## 본 실험 따라 하기
 
-**WSL에서는 저장소를 리눅스 쪽 홈(`~/meno_exp`)에 따로 clone해서 돌린다.** `/mnt/c/...`(Windows 폴더)에서 돌리면
-SFML 빌드가 몇 배 느려지고, 블라인드 폴더의 심볼릭 링크와 실행 권한이 제대로 만들어지지 않을 수 있다.
+본 실험은 아래 순서로 진행한다. 각자 자기 역할의 단계만 위에서부터 차례로 따라 한다.
 
-하니스는 LLM이 만든 코드를 그대로 빌드·실행한다. 개인 파일이 없는 전용 WSL 배포판이나 계정에서 돌리기를 권한다.
+| 단계 | 누가 | 하는 일 |
+|---|---|---|
+| 0. 공통 준비 | 모두 | 설치, clone, 테스트 |
+| 1. 본 실행 | Claude 1명, Codex 2명 | 자기 몫의 회차를 돌려 묶음 담당에게 보낸다 |
+| 2. 블라인드 묶음 | 묶음 담당 1명 (Claude 실행자 권장) | 결과를 합쳐 채점자에게 나눠 준다 |
+| 3. 채점 | 채점자 3명 | 플레이하며 채점표를 채워 돌려준다 |
+| 4. 집계 | 묶음 담당 | 채점표를 모아 일치도를 내고, 합의 뒤 통과율을 낸다 |
+| 5. 분석과 마무리 | 묶음 담당 | 분석, 그림, 대표작, 커밋 |
+
+명령은 따로 적지 않으면 모두 WSL(또는 Ubuntu)의 `~/meno_exp/llm-comparison`에서 실행한다.
+
+### 0. 공통 준비 (모두)
+
+WSL에서는 반드시 리눅스 쪽 홈에 clone한다. `/mnt/c/...`에서는 빌드가 느리고 심볼릭 링크와 실행 권한이 깨진다.
+하니스는 LLM이 만든 코드를 실행하므로, 개인 파일이 없는 전용 배포판이나 계정을 권한다.
 
 ```bash
-sudo apt-get install -y build-essential cmake git python3 xvfb ffmpeg x11-utils xdotool bc \
-  libxrandr-dev libxcursor-dev libxi-dev libudev-dev libfreetype-dev libgl1-mesa-dev \
+sudo apt-get update && sudo apt-get install -y build-essential cmake git python3 python3-venv xvfb ffmpeg x11-utils \
+  xdotool bc libxrandr-dev libxcursor-dev libxi-dev libudev-dev libfreetype-dev libgl1-mesa-dev \
   libegl1-mesa-dev libflac-dev libvorbis-dev libogg-dev libharfbuzz-dev
 ```
 
-파이썬 패키지는 설치하지 않는다. 하니스·채점·분석은 표준 라이브러리만 쓴다(Python 3.11 이상, Ubuntu 24.04는 3.12).
-
-### 구독 CLI (D13)
-
-모델은 API 키가 아니라 각자의 구독으로 부른다. WSL 안에 CLI를 설치하고 구독 계정으로 로그인한다.
-
-- **Claude Max 구독자:** Claude Code를 설치하고 `claude`를 한 번 실행해 로그인한다. `ANTHROPIC_API_KEY`는 설정하지 않는다(있으면 하니스가 지우고 부름).
-- **ChatGPT Plus 구독자:** Codex CLI를 설치하고 `codex login`으로 ChatGPT 계정에 로그인한다. `~/.codex/AGENTS.md`가 있으면 실험 동안 다른 이름으로 옮겨 둔다(하니스가 확인하고 멈춤).
-
-먼저 각자 연결을 확인한다. 짧은 2왕복만 보내고 기록하지 않는다. 모든 줄이 `OK`여야 한다.
-
 ```bash
-python3 harness/run.py --models top --probe            # Claude 구독자 (light도 같은 방법)
+git clone https://github.com/SeoulTech-Fiat-Lux/meno_exp.git ~/meno_exp
 ```
 
 ```bash
-python3 harness/run.py --models other-vendor --probe   # ChatGPT 구독자
+cd ~/meno_exp/llm-comparison && python3 tests/run_all.py
 ```
 
-### Codex 담당자 체크리스트 (ChatGPT Plus 구독자)
+테스트가 모두 통과해야 한다. 파이썬 패키지는 설치하지 않는다(Python 3.11 이상, 표준 라이브러리만).
 
-타사 모델(`other-vendor`, Codex)은 아직 실제로 돌려 보지 않았다. 플래그 일부는 문서로만 맞췄으므로 아래를 순서대로 한다.
-모두 WSL의 `~/meno_exp/llm-comparison`에서 한다. 1~7은 동결 전에 끝낸다(하니스를 고쳐야 할 수 있으므로).
+### 1. 본 실행 (Claude 1명, Codex 2명)
 
-1. **준비:** 위 "준비"대로 WSL에 저장소를 받고 패키지를 설치한다.
-2. **Codex 로그인:** Codex CLI를 설치하고 `codex login`으로 ChatGPT 계정에 로그인한다. `codex --version`을 적어 둔다.
-3. **전역 지시문 치우기:** `~/.codex/AGENTS.md`나 `~/.codex/AGENTS.override.md`가 있으면 실험 동안 다른 이름으로 바꿔 둔다. 있으면 하니스가 시작하지 않는다.
-4. **모델 확인:** `codex`를 열어 `/model` 목록에 `experiment.toml`의 타사 모델(`gpt-6.1-sol`)이 있는지 본다. 없으면 팀에 알린다(모델을 바꾸는 건 동결 전 팀 결정).
-5. **테스트:** `python3 tests/run_all.py`가 모두 통과하는지 본다.
-6. **연결 확인:** 아래 명령의 네 줄이 모두 `OK`여야 한다.
+**1-1. 구독 CLI를 설치하고 로그인한다.** 설치 방법이 바뀌었으면 각 공식 안내를 따른다.
 
-   ```bash
-   python3 harness/run.py --models other-vendor --probe
-   ```
+- Claude Max 구독자: Claude Code를 설치하고(`curl -fsSL https://claude.ai/install.sh | bash`) `claude`로 로그인한다.
+  `ANTHROPIC_API_KEY`는 설정하지 않는다.
+- ChatGPT Plus 구독자: Codex CLI를 설치하고(`sudo apt-get install -y nodejs npm && sudo npm install -g @openai/codex`)
+  `codex login`으로 로그인한다.
+  `~/.codex/AGENTS.md`, `~/.codex/AGENTS.override.md`가 있으면 이름을 바꿔 둔다. `codex`의 `/model` 목록에
+  `gpt-6.1-sol`이 없으면 팀에 알린다.
 
-   - **"명령줄을 거부함"으로 멈추면:** 이 Codex 버전이 플래그나 설정 키를 모르는 것이다. 출력 전체를 팀에 공유하고, `harness/llm.py`의 `CodexCLI.flags()`를 고친다.
-   - **"2왕복 대화 이어짐"이 FAIL:** `resume` 앞뒤의 옵션 순서가 맞지 않을 수 있다 (`CodexCLI.complete()`).
-   - **"도구 호출 없음"이 FAIL:** 명령 실행 도구를 끄는 설정(`features.shell_tool`)이 먹히지 않은 것이다.
-   - **"토큰 기록"이 FAIL:** `--json` 이벤트 형식이 바뀐 것이다 (`turn.completed`의 `usage`).
-   - 고쳤으면 `python3 tests/run_all.py`를 다시 돌리고 커밋한다.
-7. **문맥 토큰과 시범 1회:** 문맥 토큰을 재고, 퐁으로 2회차(조건별 1회)를 돌려 끝까지 도는지 본다.
+**1-2. 동결된 최신 상태인지 확인한다.** `동결 상태와 같음`이 나와야 한다. 다르면 돌리지 말고 팀에 알린다.
+옛 커밋으로 돌린 결과는 2단계에서 합쳐지지 않는다.
 
-   ```bash
-   python3 harness/run.py --models other-vendor --measure-context
-   ```
+```bash
+git pull && python3 harness/freeze.py check
+```
 
-   ```bash
-   python3 harness/run.py --games pilot --models other-vendor --reps 1
-   ```
+**1-3. 연결을 확인한다.** 출력의 모든 줄이 `OK`여야 한다.
 
-8. **본 실행 (동결 뒤):** 자기 몫만 돌린다. 기록은 `runs/main/runs-other-vendor-<K>of2.jsonl`에 쌓인다.
+```bash
+python3 harness/run.py --models top,light --probe        # Claude 구독자
+```
 
-   ```bash
-   python3 harness/run.py --games main --models other-vendor --shard 1/2   # 두 번째 사람은 2/2
-   ```
+```bash
+python3 harness/run.py --models other-vendor --probe     # ChatGPT 구독자
+```
 
-9. **결과 보내기:** `runs/main/`을 실행 파일(`game`)까지 압축해 블라인드 묶음을 만드는 사람에게 git 밖으로 보낸다. `runs/`는 채점이 끝날 때까지 push하지 않는다.
+Codex에서 실패하면 출력 전체를 팀에 공유한다. 고칠 곳은 `harness/llm.py`의 `CodexCLI`이다.
 
-## 실행
+**1-4. 자기 몫을 돌린다.** 끝난 회차는 건너뛰므로, 창을 닫았거나 구독 한도로 멈췄으면 같은 명령을 다시 실행한다.
 
-모두 `llm-comparison/`에서 실행한다. 이미 기록된 회차는 건너뛰므로, 중단되면 같은 명령으로 이어서 돌린다.
-중간에 끊긴 회차는 이전 폴더를 `<회차 ID>.interrupted-N`으로 옮겨 두고 다시 받으며, 몇 번째 시도인지 기록된다.
-구독 사용 한도에 걸리면 30분마다 같은 왕복을 다시 보내며 최대 6시간 기다린다. 그래도 안 풀리면 멈추니, 한도가 풀린 뒤 같은 명령을 다시 실행한다.
+```bash
+python3 harness/run.py --games main --models top,light                  # Claude Max 구독자: 72회차
+```
+
+```bash
+python3 harness/run.py --games main --models other-vendor --shard 1/2   # ChatGPT 구독자 1: 18회차
+```
+
+```bash
+python3 harness/run.py --games main --models other-vendor --shard 2/2   # ChatGPT 구독자 2: 18회차
+```
+
+- 본 실행 중에는 같은 PC에서 다른 무거운 작업을 하지 않는다. 프레임 시간이 흔들린다.
+- `runs/`는 push하지 않는다. 먼저 올리면 채점자가 조건을 알 수 있다.
+
+**1-5. 결과를 압축해 묶음 담당에게 보낸다** (git 밖, 예: 메신저나 드라이브). 묶음 담당 본인은 보내지 않는다.
+
+```bash
+tar czf ~/runs-<이름>.tgz -C runs main
+```
+
+### 2. 블라인드 묶음 (묶음 담당)
+
+**2-1. 받은 결과를 푼다.** 사람마다 다른 폴더에 푼다.
+
+```bash
+mkdir -p ~/incoming/chatgpt1 && tar xzf ~/runs-chatgpt1.tgz -C ~/incoming/chatgpt1 --strip-components=1
+```
+
+```bash
+mkdir -p ~/incoming/chatgpt2 && tar xzf ~/runs-chatgpt2.tgz -C ~/incoming/chatgpt2 --strip-components=1
+```
+
+**2-2. 합치고 검사한다.** 묶음 담당이 Claude 실행자이면 자기 결과는 이미 `runs/main`에 있으므로 첫 원본으로 `runs/main`을 그대로 준다.
+아니면 Claude 결과도 2-1처럼 `~/incoming/claude`에 풀고 그 경로를 준다. 입력 해시가 다르거나 빠진 회차가 있으면 합치지 않고 멈춘다.
+
+```bash
+python3 grading/merge_runs.py runs/main runs/main ~/incoming/chatgpt1 ~/incoming/chatgpt2
+```
+
+**2-3. 블라인드 폴더를 만든다.** `~/blind`는 없거나 비어 있어야 한다. 이미 있으면 지우거나 다른 이름을 쓴다.
+대응표(`~/sealed/...`)는 반드시 저장소 밖에 두고, 채점이 끝날 때까지 아무도 열지 않는다. 가능하면 채점하지 않는 사람이 보관한다.
+
+```bash
+python3 grading/blind.py runs/main ~/blind ~/sealed/meno-exp-mapping.csv --graders 이름1,이름2,이름3
+```
+
+**2-4. 묶음을 압축해 채점자 모두에게 보낸다.** 배정은 `~/blind/assignments.csv`에 있다(ID별 채점자).
+zip이 아니라 tar를 쓴다. zip은 에셋 심볼릭 링크를 깨뜨린다.
+
+```bash
+tar czf ~/blind.tgz -C ~ blind
+```
+
+### 3. 채점 (채점자)
+
+**3-1. 런타임 패키지를 설치하고 묶음을 푼다.**
+
+```bash
+sudo apt-get install -y libx11-6 libxrandr2 libxcursor1 libxi6 libudev1 libgl1 libgl1-mesa-dri \
+  libfreetype6 libharfbuzz0b libflac12t64 libvorbis0a libvorbisenc2 libvorbisfile3 libogg0
+```
+
+```bash
+tar xzf ~/blind.tgz -C ~
+```
+
+**3-2. 배정된 폴더마다 게임을 실행해 채점한다.** `~/blind/assignments.csv`에서 자기 이름이 적힌 ID만 채점한다.
+
+```bash
+cd ~/blind/<ID> && ./game
+```
+
+- 채점표 `~/blind/<ID>/sheet-<자기 이름>.csv`를 연다. Windows에서는 `explorer.exe ~/blind`로 폴더를 열어 Excel로 열면 된다.
+- `result` 칸에 통과는 `O`, 실패는 `X`를 적는다. `requirement`의 한 문장만 확인한다.
+- 수치는 재지 않는다. 눈에 띄게 다르면 실패이고, 애매하면 `note`에 적어 두면 합의 회의에서 정한다.
+- 효과음은 채점 전에 `~/blind/_assets/sfx/`의 파일을 한 번씩 들어 둔다.
+- **Excel에서 저장할 때는 형식을 "CSV UTF-8 (쉼표로 분리)"로 둔다.** 그냥 "CSV"로 저장하면 한국어가 깨진다.
+- `~/blind` 안의 파일은 Windows 탐색기로 지우지 않는다(심볼릭 링크 때문에 오류가 난다).
+
+**3-3. 채운 채점표만 묶어 묶음 담당에게 돌려준다.**
+
+```bash
+cd ~ && tar czf ~/sheets-<자기 이름>.tgz blind/*/sheet-<자기 이름>.csv
+```
+
+### 4. 집계 (묶음 담당)
+
+**4-1. 돌려받은 채점표를 제자리에 푼다.** 채점자마다 한 번씩 실행한다. 빈 채점표가 채워진 것으로 바뀐다.
+
+```bash
+tar xzf ~/sheets-<채점자 이름>.tgz -C ~
+```
+
+**4-2. 대응표 없이 일치도를 낸다.** 빈 칸이 있으면 `grading/results/incomplete.csv`에 나오므로, 해당 채점자에게 마저 받는다.
+
+```bash
+python3 grading/collect.py agree ~/blind grading/results
+```
+
+**4-3. 합의 회의를 한다.** `grading/results/disagreements.csv`의 어긋난 항목을 함께 다시 보고 `final` 칸에 `O`/`X`를 채운다.
+
+**4-4. 처음으로 대응표를 열어 회차별 통과율을 낸다.**
+
+```bash
+python3 grading/collect.py final ~/blind grading/results ~/sealed/meno-exp-mapping.csv
+```
+
+### 5. 분석과 마무리 (묶음 담당)
+
+**5-1. 그림을 그린다** (matplotlib이 필요한 유일한 단계). 보고서보다 먼저 그려야 보고서 본문에 그림이 들어간다.
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r analysis/requirements.txt
+```
+
+```bash
+.venv/bin/python analysis/figures.py runs/main grading/results/run_scores.csv analysis/results
+```
+
+**5-2. 사전 등록한 분석을 돌린다.** 결과는 `analysis/results/report.md`다. 맨 위 "요약"에 1차 지표와 민감도 판정이 있다.
+읽기용 docx는 이 파일을 Claude에 넣어 만들되, 숫자와 판정 문구는 고치지 않고 옮기게 한 뒤 원본과 대조한다.
+
+```bash
+python3 analysis/analyze.py runs/main grading/results/run_scores.csv analysis/results
+```
+
+**5-3. 대표작을 녹화한다.** 폴더를 만든 뒤 `cd ~/showcase/<게임>-<조건> && ./game`으로 띄워 직접 플레이하며
+Windows 게임 바(Win+Alt+R)로 녹화한다.
+
+```bash
+python3 analysis/showcase.py runs/main grading/results/run_scores.csv ~/showcase
+```
+
+**5-4. 결과를 커밋하고 push한다.** 이때 처음으로 `runs/`를 올린다. 실행 파일과 녹화는 `.gitignore`에 있어 올라가지 않는다.
+
+```bash
+cp ~/sealed/meno-exp-mapping.csv grading/mapping.csv
+```
+
+```bash
+git add runs/main grading/mapping.csv grading/results analysis/results && git commit -m "research: Add main run results" && git push
+```
+
+## 참고: 시범 실행과 점검 명령
+
+`llm-comparison/`에서 실행한다. 시범은 이미 끝났다([docs/pilot-2026-11-14.md](docs/pilot-2026-11-14.md)). 다시 돌리면 구독 한도를 쓴다.
 
 ```bash
 python3 harness/run.py --games pilot --mock --mock-fail-first --reps 1   # LLM 없이 흐름 점검
 ```
 
-시범 실행은 `claude-haiku-5-5`(경량) 하나로 돈다. `--games pilot`이면 모델을 따로 고르지 않아도 된다.
-
 ```bash
-python3 harness/run.py --games pilot --dry-run          # 실행할 회차 목록과 기록 파일
+python3 harness/run.py --games main --dry-run           # 실행할 회차 목록과 기록 파일
 ```
 
 ```bash
@@ -132,103 +263,17 @@ python3 harness/run.py --games pilot                    # 시범 실행 (퐁 × 
 python3 analysis/summarize.py runs/pilot-<입력 해시>      # 결과 요약과 본 실행 추정 (폴더 이름은 시범 실행이 출력함)
 ```
 
-본 실행(동결 상태에서만 시작)은 사람마다 자기 몫만 돌린다.
-
 ```bash
-python3 harness/run.py --games main --models top,light                  # Claude Max 구독자: 48회차
+python3 analysis/analyze.py runs/pilot-<입력 해시> - analysis/pilot   # 채점 전: 하니스 지표만
 ```
 
-```bash
-python3 harness/run.py --games main --models other-vendor --shard 1/2   # ChatGPT Plus 구독자 1: 12회차
-```
+## 참고: 동결
 
-```bash
-python3 harness/run.py --games main --models other-vendor --shard 2/2   # ChatGPT Plus 구독자 2: 12회차
-```
+`freeze-2`로 동결했다. 이후 명세·에셋·템플릿·문맥·지시문·채점표·하니스를 바꾸면 모든 회차를 다시 돌린다.
 
-- **기록 파일:** 사람마다 `runs/main/runs-<모델>[-<몫>].jsonl`에 따로 쓴다. 하니스는 모든 기록 파일을 읽어 이미 끝난 회차를 건너뛴다.
-- **결과 모으기:** 채점 전에 각자 `runs/main/`을 압축해(실행 파일 `game` 포함) 블라인드 묶음을 만드는 사람에게 git 밖으로 보낸다. 그 사람이 `grading/merge_runs.py`로 합친다(아래 채점 절). 입력 해시·동결 상태가 같은지, 회차가 겹치거나 빠졌는지, 실행 파일이 있는지 검사하고, 문제가 있으면 합치지 않는다.
-- **기록 폴더:** 본 실행은 `runs/main/`이다. 시범 실행과 mock은 `runs/pilot-<입력 해시>/`, `runs-mock/pilot-<입력 해시>/`처럼 입력별로 나뉜다. 명세·지시문 등을 고친 뒤 다시 돌리면 새 폴더에 처음부터 기록된다.
-- **빌드 시간:** 조건마다 처음 한 번은 meno·SFML을 내려받아 빌드한다(4코어에서 1분 안팎). 그 뒤 회차마다 `main.cpp`만 바꿔 다시 빌드한다(약 2초).
-- **출력 길이:** `experiment.toml`의 `max_output_tokens`를 상한으로 준다(Codex는 줄 방법이 없음). 길이 제한으로 잘린 답은 회차 기록에 따로 표시된다.
-- **push 시점:** `runs/`는 채점이 끝난 뒤에 push한다. 먼저 올리면 채점자가 코드와 조건을 볼 수 있다.
+다시 동결해야 할 때:
+1. 문맥 묶음을 고정 커밋에서 다시 만든다.
 
-## 채점
-
-```bash
-python3 grading/make_sheets.py            # 채점표 초안 다시 만들기 (확정 후에는 쓰지 않음)
-```
-
-```bash
-python3 grading/merge_runs.py runs/main ~/incoming/claude ~/incoming/chatgpt1 ~/incoming/chatgpt2   # 세 사람 결과 합치기와 검사
-```
-
-```bash
-python3 grading/blind.py runs/main ~/blind ~/sealed/meno-exp-mapping.csv --graders A,B,C   # 대응표는 반드시 저장소 밖에
-```
-
-- **블라인드 폴더 배포:** `~/blind`를 압축해 채점자에게 나눠 준다. `assignments.csv`에 ID별 채점자가 있다.
-- **채점 방법:** 채점자는 자기에게 배정된 `<ID>/`에서 `./game`을 실행하고, `sheet-<자기 이름>.csv`에서 `how`가 `play`인 줄에만 통과·실패를 적는다 (`harness`·`excluded` 줄은 비워 둔다). 다 하면 `meta-<자기 이름>.csv`에 어느 조건 같은지(meno/sfml/모름), 확신(1~3), 채점에 쓴 분을 적는다.
-- **판정 기준:** 명세의 수치(px, 초, 볼륨 %, 색 코드)는 정밀하게 재지 않는다. 동작이 명세대로이고 수치가 눈에 띄게 다르지 않으면 통과, 눈에 띄게 다르면 실패로 적는다 (예: 공이 분명히 느림, 색이 분명히 다름). 애매하면 `note`에 적고, 합의 회의에서 정한다.
-- **대응표:** 채점이 끝날 때까지 아무도 열지 않는다. 가능하면 채점하지 않는 사람(지도교수·조교 등)이 보관한다.
-- **채점자 PC(WSL Ubuntu 24.04)에 필요한 런타임 패키지:**
-
-```bash
-sudo apt-get install -y libx11-6 libxrandr2 libxcursor1 libxi6 libudev1 libgl1 libgl1-mesa-dri \
-  libfreetype6 libharfbuzz0b libflac12t64 libvorbis0a libvorbisenc2 libvorbisfile3 libogg0
-```
-
-채점이 끝나면 모은 `~/blind`에서 두 단계로 집계한다.
-
-```bash
-python3 grading/collect.py agree ~/blind grading/results    # 일치도(agreement.md)와 어긋난 항목(disagreements.csv). 대응표 없이
-```
-
-합의 회의에서 `grading/results/disagreements.csv`의 `final` 칸을 채운 뒤, 이때 처음으로 대응표를 연다.
-
-```bash
-python3 grading/collect.py final ~/blind grading/results ~/sealed/meno-exp-mapping.csv   # 회차별 통과율(run_scores.csv), 블라인드 점검
-```
-
-## 분석
-
-사전 등록한 분석(PLAN 2.4절)을 그대로 계산한다.
-
-```bash
-python3 analysis/analyze.py runs/main grading/results/run_scores.csv analysis/results
-```
-
-채점 전에도 하니스 지표(빌드 성공, 왕복, 토큰, 빌드 오류 유형)는 볼 수 있다.
-
-```bash
-python3 analysis/analyze.py runs/pilot-<입력 해시> - analysis/pilot
-```
-
-그림은 같은 계산으로 그린다(`analysis/figures/`: 셀별 1차 지표, 효과 크기와 신뢰구간, 빌드 오류 유형). 그림에만 matplotlib이 필요하다. 채점 전에는 통과율 그림을 만들지 않는다.
-
-```bash
-python3 -m venv .venv && .venv/bin/pip install -r analysis/requirements.txt
-```
-
-```bash
-.venv/bin/python analysis/figures.py runs/main grading/results/run_scores.csv analysis/results
-```
-
-대표작은 게임·조건마다 하나를 고르고(규칙은 PLAN 2.4절), 바로 실행할 수 있는 폴더를 만든다.
-
-```bash
-python3 analysis/showcase.py runs/main grading/results/run_scores.csv ~/showcase
-```
-
-녹화는 `cd ~/showcase/<게임>-<조건> && ./game`으로 띄워(WSLg가 창과 소리를 Windows로 보냄) 직접 플레이하면서 Windows 게임 바(Win+Alt+R)로 한다. 무입력 녹화(`run_noinput.sh`)는 소리가 없고 조작할 수 없어 대표작에는 쓰지 않는다.
-
-## 동결 절차
-
-본 실행 전에 아래를 순서대로 마치고, 이 저장소에 `freeze-1` 태그를 단다. 이후에는 명세·에셋·템플릿·문맥·지시문·채점표를 바꾸지 않는다(바꾸면 전부 다시 돌린다).
-
-1. **Meno 쪽 정리 (완료):** `v0.2.0` = `46f8934`로 동결했다. 고친 내용은 `specs/CHANGELOG.md`에 있다(D2, D10). **이제 meno 문서는 고치지 않는다.**
-2. **meno 버전 고정 (완료):** `templates/meno/CMakeLists.txt`의 `GIT_TAG`와 `contexts/manifest.json`의 meno `commit`이 `46f8934`다.
-3. **문맥 묶음 재생성:** 출처를 고정 커밋으로 받아 묶음을 만들고 커밋한다.
    ```bash
    cd llm-comparison/contexts && mkdir -p src
    git clone https://github.com/SeoulTech-Fiat-Lux/Meno.git src/Meno && git -C src/Meno checkout 46f8934f0f7754a7e09033c4413b6a5222d4493d
@@ -237,20 +282,37 @@ python3 analysis/showcase.py runs/main grading/results/run_scores.csv ~/showcase
    python3 build_context.py manifest.json meno bundles/meno.md SeoulTech-Fiat-Lux/Meno=src/Meno
    python3 build_context.py manifest.json sfml bundles/sfml.md SFML/SFML=src/SFML SFML/SFML-Website=src/SFML-Website
    ```
-4. **설정 확정:** `experiment.toml`의 모델 ID(TBD)와 `games.main`을 정한다.
-5. **시범 실행:** `--games pilot`으로 돌려 비용·문맥 창·녹화 판정·채점표를 확인한다. 고칠 수 있는 것은 명세 문구·템플릿·하니스까지다.
-6. **채점표 확정:** `grading/sheets/`를 팀 내부 문서의 항목 수와 맞춰 고친다.
-7. **잠그기:** `specs/sim/`에 시뮬레이션 스크립트를 넣는다. 그다음 아래 명령으로 잠금 파일(`freeze.lock.json`)을 만들고 커밋한 뒤 `freeze-1` 태그를 단다.
-   - 잠금 도구는 일관성을 먼저 검사한다: 템플릿과 문맥 목록의 meno·SFML 커밋이 같은지, 문맥 묶음이 목록과 맞는지, 모델이 정해졌는지, `specs/sim/` 스크립트가 있는지, 채점표 문장이 지금 명세와 같은지. 하나라도 걸리면 잠그지 않는다.
-   - 잠그기 직전에 `python3 tests/run_all.py`로 하니스를 확인한다.
-   - 본 실행은 잠금 파일이 없거나 입력이 잠금과 다르면 시작하지 않는다.
+
+2. `python3 tests/run_all.py`로 확인한다.
+3. 잠금 파일을 만든다. 일관성 검사에 걸리면 잠그지 않는다.
+
    ```bash
    python3 harness/freeze.py write
    ```
-   ```bash
-   python3 harness/freeze.py check   # 본 실행 직전에 다시 확인
-   ```
+
+4. 잠금 파일을 커밋하고 다음 번호의 태그(`freeze-N`)를 달아 push한다. 실행 담당은 1-2부터 다시 한다.
+
+## 라이선스와 출처
+
+이 저장소에서 만든 것:
+
+| 대상 | 라이선스 | 파일 |
+|---|---|---|
+| 코드 (`harness/`, `grading/`, `analysis/`, `tests/`, `contexts/*.py`, `specs/sim/*.py`, `benchmark/*.py`) | zlib | `LICENSE` |
+| 요구사항 문서 (`llm-comparison/specs/`) | CC BY 4.0 | `llm-comparison/specs/LICENSE` |
+| 에셋 (`llm-comparison/assets/` 중 폰트 제외) | CC BY 4.0 | `llm-comparison/assets/LICENSE`. 제작 방식은 `assets-spec.xlsx`의 출처·라이선스 열 |
+| 실험 결과 (`llm-comparison/runs/`, `benchmark/results/`) | CC BY 4.0 | 각 폴더의 `LICENSE` |
+
+가져온 것:
+
+| 대상 | 출처 | 라이선스 |
+|---|---|---|
+| `llm-comparison/assets/fonts/game.ttf` | Neo둥근모 (Dalgona.) https://neodgm.dalgona.dev/ | SIL OFL 1.1 (`fonts/LICENSE.txt`). 수정하지 않음 |
+| `llm-comparison/contexts/bundles/meno.md` | SeoulTech-Fiat-Lux/Meno의 README와 사용자 가이드 | Meno 저장소의 라이선스 (zlib) |
+| `llm-comparison/contexts/bundles/sfml.md` 중 readme | SFML/SFML `readme.md` (태그 3.1.0) | zlib |
+| `llm-comparison/contexts/bundles/sfml.md` 중 튜토리얼 | SFML/SFML-Website `pages/tutorials/3.1/` — SFML Website by the SFML Team | CC BY 4.0. 파일마다 출처 머리글을 붙였고 내용은 고치지 않음 |
+| 빌드 시 내려받는 SFML 3.1.0 | https://github.com/SFML/SFML | zlib |
 
 ## 비밀 정보
 
-구독 로그인 정보는 각자의 홈 폴더(`~/.claude`, `~/.codex`)에 있고 저장소에 들어가지 않는다. 녹화 영상, 실행 파일, 블라인드 폴더, 채점 전 대응표는 커밋하지 않는다(`.gitignore`에 등록됨).
+구독 로그인 정보(`~/.claude`, `~/.codex`)는 저장소에 넣지 않는다. 녹화, 실행 파일, 블라인드 폴더, 대응표는 `.gitignore`에 있다.

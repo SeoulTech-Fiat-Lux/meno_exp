@@ -8,15 +8,15 @@
 //
 // 사용: meno_bench --target <대상> --count N --warmup W --frames F --out <csv> [--seed S] [--loop run|direct]
 //       [--screenshot <png>]  (sfml 대상만: 마지막 프레임을 저장해 두 SFML 대상이 같은 그림인지 확인한다)
-// 출력: 머리글 frame,frame_ms 와 F줄. 표준 오류에 frames·updates 요약 한 줄.
+// 출력: 머리글 frame,frame_ms와 F줄. 표준 오류에 frames·updates 요약 한 줄.
 //
 // 공정하게 만드는 규칙 (benchmark/README.md의 "실행 파일 약속"):
-// - 세 대상은 같은 텍스처, 창 크기, 시드로 정한 초기 상태를 쓰고, 프레임마다 같은 이동 함수 step()을 한 번 부른다.
+// - 네 대상은 같은 텍스처, 창 크기, 시드로 정한 초기 상태를 쓰고, 프레임마다 같은 이동 함수 step()을 한 번 부른다.
 // - meno의 Application은 고정 시간 간격으로 update()를 부르므로, fixedTimeStep을 아주 작게 하고
 //   maxUpdatesPerFrame = 1로 두어 프레임마다 정확히 한 번 갱신되게 한다. 이동은 meno의 dt가 아니라 kDt를 쓴다.
 // - 프레임 시간은 프레임마다 같은 지점에서 찍은 시각의 간격이다(SFML은 display() 뒤, meno는 draw 핸들러).
 //
-// --loop direct: Game::run() 대신 Game::run()이 하는 일을 공개 API로 같은 순서로 직접 부른다. Tracy 구간을
+// --loop direct: Game::run() 대신 그것이 하는 일을 같은 순서의 공개 API 호출로 직접 한다. Tracy 구간을
 // 호출 사이에 넣기 위한 것이다(Meno 코드를 고치지 않고 단계별 비용을 보려고). 측정 수치는 --loop run으로 낸다.
 #include <meno/Meno.hpp>
 
@@ -81,7 +81,7 @@ std::vector<Body> makeBodies(int count, std::uint32_t seed) {
     return bodies;
 }
 
-// 세 대상이 똑같이 부르는 이동: 등속 이동, 창 경계에서 튕김, 일정한 회전.
+// 네 대상이 똑같이 부르는 이동: 등속 이동, 창 경계에서 튕김, 일정한 회전.
 void step(std::vector<Body>& bodies) {
     BENCH_ZONE("bench.move");
     for (auto& b : bodies) {
@@ -123,7 +123,7 @@ public:
         times_.reserve(static_cast<std::size_t>(frames_));
     }
 
-    // 프레임마다 같은 지점에서 한 번 부른다. 기록이 끝났으면 true.
+    // 프레임마다 같은 지점에서 한 번 부른다. 기록이 끝나면 true를 돌려준다.
     bool tick() {
         const auto now = std::chrono::steady_clock::now();
         if (started_) {
@@ -291,8 +291,8 @@ meno::GameConfig menoConfig(const char* title) {
 }
 
 // Game::run()이 프레임마다 하는 일(Application::run의 processEvents → update → render, Game::render)을
-// 공개 API로 같은 순서로 부른다. 차이는 Clock과 meno::Time 갱신이 없다는 것뿐이고, 둘 다 meno 내부
-// 동작에는 쓰이지 않는다(Time은 Application만 쓰고 읽는 것은 사용자 코드뿐).
+// 같은 순서의 공개 API 호출로 한다. 차이는 Clock과 meno::Time 갱신이 없다는 것뿐이고, 둘 다 meno 내부
+// 동작에는 쓰이지 않는다(Time은 Application만 쓰고, 읽는 것은 사용자 코드뿐이다).
 void runDirectLoop(meno::Game& game, FrameRecorder& rec) {
     meno::Renderer& renderer = game.renderer();
     while (!rec.done()) {

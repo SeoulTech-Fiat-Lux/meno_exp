@@ -1,18 +1,18 @@
-"""블라인드 채점 결과를 모은다. 두 단계로 나눠 쓴다 (PLAN 2.3·2.4절).
+"""블라인드 채점 결과를 모은다. 두 단계로 나눠 쓴다 (PLAN 2·3절).
 
 1단계, 채점이 끝나면 (대응표 없이, 조건을 모르는 채로):
     python3 grading/collect.py agree ~/blind grading/results
     - judgments.csv      모든 채점자의 항목별 판정 (플레이 항목만)
-    - agreement.md       채점자 일치도: 일치율, Cohen's κ, Gwet AC1 (전체와 게임별)
+    - agreement.md       채점자 일치도: 일치율, Cohen's κ, Gwet AC1 (전체와 게임별). 같은 값을 agreement.json으로도 쓴다
     - disagreements.csv  두 채점자의 판정이 어긋난 항목. 합의 회의에서 final 칸(통과/실패)을 채운다
     - incomplete.csv     비어 있는 판정 (이 칸들을 마저 채점한다)
 
 2단계, 합의가 끝나면 (이때 처음으로 대응표를 연다):
     python3 grading/collect.py final ~/blind grading/results ~/sealed/meno-exp-mapping.csv
     - run_scores.csv     회차별 통과율 (analysis/analyze.py가 읽는다)
-    - blinding.csv       채점자의 조건 추측과 정답, 채점 시간
 
-판정 표기는 통과/실패, pass/fail, P/F, O/X, 1/0을 받는다. how = harness 항목은 채점하지 않는다.
+판정 표기는 통과/실패, pass/fail, P/F, O/X, 1/0을 받는다. 채점표에는 플레이 항목만 있다.
+명세 문장과 채점하지 않는 항목(하니스·제외)의 이유는 grading/sheets/items.csv에 있다.
 """
 from __future__ import annotations
 
@@ -55,8 +55,7 @@ def load_judgments(blind_dir: Path) -> tuple[list[dict], list[dict], dict]:
     for sheet in sorted(blind_dir.glob("*/sheet-*.csv")):
         blind_id, grader = sheet.parent.name, sheet.stem.removeprefix("sheet-")
         for row in read_csv(sheet):
-            if row.get("how") != "play":
-                continue
+            # 채점표에는 플레이 항목만 있다(나머지는 sheets/items.csv).
             items[(blind_id, row["id"])] = row
             value = verdict(row.get("result"))
             record = {"blind_id": blind_id, "item": row["id"], "game": row["id"].rsplit("-", 1)[0],
@@ -146,24 +145,7 @@ def final(blind_dir: Path, out: Path, mapping_path: Path) -> None:
         runs.append({**m, "play_items": len(values), "passed": sum(values), "pass_rate": sum(values) / len(values)})
     write_csv(out / "run_scores.csv", runs,
               ["blind_id", "run_id", "game", "condition", "model", "rep", "play_items", "passed", "pass_rate"])
-    blinding = []
-    for meta in sorted(blind_dir.glob("*/meta-*.csv")):
-        rows = [r for r in read_csv(meta) if not (r.get("guess_condition") or "").startswith("#")]
-        row = rows[0] if rows else {}
-        truth = mapping.get(meta.parent.name, {}).get("condition")
-        guess = (row.get("guess_condition") or "").strip().lower()
-        blinding.append({"blind_id": meta.parent.name, "grader": meta.stem.removeprefix("meta-"),
-                         "guess": guess, "truth": truth, "correct": "" if guess not in ("meno", "sfml") else int(guess == truth),
-                         "confidence": row.get("confidence", ""), "minutes": row.get("minutes", "")})
-    write_csv(out / "blinding.csv", blinding,
-              ["blind_id", "grader", "guess", "truth", "correct", "confidence", "minutes"])
-    guessed = [b for b in blinding if b["correct"] != ""]
-    minutes = [float(b["minutes"]) for b in blinding if b["minutes"] not in ("", None)]
     print(f"회차 {len(runs)}개 → {out}/run_scores.csv")
-    if guessed:
-        print(f"조건 추측 {len(guessed)}건 중 맞힘 {sum(b['correct'] for b in guessed)}건 (50%에서 멀수록 블라인드가 샘)")
-    if minutes:
-        print(f"채점 시간 평균 {sum(minutes) / len(minutes):.1f}분 ({len(minutes)}건)")
 
 
 def main() -> None:

@@ -1,4 +1,4 @@
-"""대표작을 고르고, 플레이·녹화할 수 있는 폴더를 만든다 (PLAN 2.4절).
+"""대표작을 고르고, 플레이·녹화할 수 있는 폴더를 만든다 (PLAN 3절).
 
 사용 (llm-comparison/ 에서, 채점이 끝나고 run_scores.csv가 생긴 뒤):
     python3 analysis/showcase.py runs/main grading/results/run_scores.csv ~/showcase
@@ -10,7 +10,7 @@
     4. 그래도 같으면 회차 ID 순서
 출력: showcase.csv와, <게임>-<조건>/ 폴더마다 실행 파일 game과 assets(공용 _assets 링크).
 
-녹화: 무입력 실행(run_noinput.sh)은 보이지 않는 화면(Xvfb)에서 실행되므로 소리가 없고 사람이 조작할 수 없다. 대표작 영상은
+녹화: 무입력 실행(run_noinput.sh)은 보이지 않는 화면(Xvfb)에서 돌아가므로 소리가 없고 사람이 조작할 수 없다. 대표작 영상은
 WSL에서 `cd <폴더> && ./game`으로 띄워(WSLg가 창과 소리를 Windows로 보냄) 직접 플레이하면서, Windows의
 게임 바(Win+Alt+R, 활성 창과 시스템 소리 녹화)로 녹화한다. 영상과 실행 파일은 git에 넣지 않고 Releases나 공유 드라이브에 둔다.
 """

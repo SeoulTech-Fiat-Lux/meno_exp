@@ -11,7 +11,7 @@ jobs = 4
 counts = [100, 200, 400, 1000, 2000, 5000, 10000]
 # B1: SFML 직접 사용 → meno Renderer → meno GameObject·Sprite 순으로, 단계마다 비용이 얼마나 붙는지 본다.
 # 첫 대상이 기준이며, 요약 표의 비는 모두 이 대상에 대한 값이다.
-# sfml-batched(배칭 하한선)를 맨 앞에 둬, "sfml-batched → sfml"이 스프라이트마다 draw를 부르는 비용(배칭으로 줄일 수 있는 몫)이 되게 한다.
+# sfml-batched(배칭 하한선)를 맨 앞에 두어 "sfml-batched → sfml"이 스프라이트마다 draw를 부르는 비용(배칭으로 줄일 수 있는 몫)이 되게 한다.
 targets = ["sfml-batched", "sfml", "meno-renderer", "meno-object"]
 reps = 5                     # (대상, N)마다 프로세스를 새로 띄워 반복한다
 warmup_frames = 120          # 창 생성·텍스처 업로드가 섞이는 앞쪽 프레임. 실행 파일은 이 프레임을 버리고 기록하지 않는다
@@ -33,7 +33,7 @@ version = "v0.15.0"
 repo = "https://github.com/wolfpld/tracy.git"
 cmake_args = ["-DCMAKE_BUILD_TYPE=Release", "-DBENCH_ENABLE_TRACY=ON"]
 # Game::run() 대신 같은 순서의 공개 API 호출로 루프를 돌려 호출 사이에 구간을 넣는다(Meno를 고치지 않으려고).
-# 이 루프의 프레임 시간은 game.run()과 같다: N=1000에서 +1.4%, N=10000에서 +0.4% (2026-11-14, 3회 중앙값, 반복 사이 차이 안).
+# 이 루프의 프레임 시간은 game.run()과 같다: N=1000에서 +1.4%, N=10000에서 +0.4% (2026-11-14, 3회 중앙값, 반복 사이 차이 이내).
 extra_args = ["--loop", "direct"]
 target = "meno-object"       # 사용자가 실제로 쓰는 경로
 counts = [1000, 10000]

@@ -109,6 +109,7 @@ fake = tmp / "freeze_base"
 game = "11-survivor"  # 시뮬레이션 스크립트가 필요한 게임
 shutil.copy(LC / "specs" / "games" / f"{game}.md", fake / "specs" / "games" / f"{game}.md")
 shutil.copy(LC / "grading" / "sheets" / f"{game}.csv", fake / "grading" / "sheets" / f"{game}.csv")
+shutil.copy(LC / "grading" / "sheets" / "items.csv", fake / "grading" / "sheets" / "items.csv")
 freeze.BASE = fake
 mini = {"games": {"main": [game]}}
 probs = freeze.prerequisite_problems(mini)

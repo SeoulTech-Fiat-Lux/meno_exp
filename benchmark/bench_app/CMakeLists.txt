@@ -41,7 +41,7 @@ if(NOT MSVC)
 endif()
 
 if(BENCH_ENABLE_TRACY)
-    # Tracy의 CMake는 TRACY_ENABLE이 기본 OFF다. 켜지 않으면 매크로가 비어 캡처가 빈다.
+    # Tracy의 CMake는 TRACY_ENABLE이 기본 OFF다. 켜지 않으면 매크로가 비어 있어 캡처도 비게 된다.
     set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
     # 캡처 도구(benchmark/tracy.py, bench.toml [tracy].version)와 같은 버전이어야 연결된다.
     FetchContent_Declare(

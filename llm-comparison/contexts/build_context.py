@@ -4,7 +4,7 @@
 예:   python3 build_context.py manifest.json sfml sfml.md SFML/SFML=../src/SFML SFML/SFML-Website=../src/site
 
 각 로컬 경로가 git 저장소면 HEAD가 manifest의 커밋과 같은지 확인하고, 다르면 멈춘다.
-문서 내용은 고치지 않는다. 파일마다 출처 머리글 한 줄을 붙여 이어 붙이고, 끝에 크기와 sha256을 출력한다.
+문서 내용은 고치지 않는다. 파일마다 출처 머리글 한 줄을 달아 이어 붙이고, 끝에 크기와 sha256을 출력한다.
 """
 import hashlib
 import json

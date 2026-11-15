@@ -1,6 +1,6 @@
 """결과 보고서 만들기 (SeoulTech-Fiat-Lux/Meno#30).
 
-측정·요약·그림·Tracy 결과를 모아 결과 보고서와 #30 종료 댓글 초안을 만든다. 보고서는 meno_exp의 결과 폴더에
+측정·요약·그림·Tracy 결과를 모아 결과 보고서를 만든다. 보고서는 meno_exp의 결과 폴더에
 그대로 두고 커밋한다(Meno 저장소로 옮기지 않음). 숫자와 표는 결과 파일에서 옮기고, 해석과 결론은 사람이 쓰도록
 "(작성)" 자리를 남긴다.
 
@@ -10,10 +10,9 @@
 결과 (<결과 폴더>/report/):
     benchmark.md            결과 보고서. "(작성)" 자리를 채워 완성한다
     (그림은 복사하지 않고 결과 폴더의 figures/*.png, tracy/zones.png를 상대 경로로 가리킨다)
-    issue-30-comment.md     #30 종료 댓글 초안 (이슈 양식의 TL;DR 형식)
 
 맨 위에 "초안 경고"가 있으면 먼저 해결한다. 경고가 남은 보고서는 결과로 쓰지 않는다.
-report/는 실행할 때마다 다시 만들므로, 사람이 채운 benchmark.md를 덮어쓰지 않도록 채운 뒤에는 다시 돌리지 않는다.
+"(작성)" 자리를 모두 채운 benchmark.md는 덮어쓰지 않는다. 다시 만들려면 지운 뒤 돌린다.
 """
 from __future__ import annotations
 
@@ -108,7 +107,7 @@ def main() -> None:
     sweep = env.get("config", {}).get("sweep", {})
     targets = verdicts["targets"]
     meno = env.get("meno", {})
-    # 측정한 당시의 측정 프로그램 버전(env.json). 없으면 지금 저장소의 커밋을 적는다.
+    # 측정 당시의 측정 프로그램 버전(env.json). 없으면 지금 저장소의 커밋을 적는다.
     exp_commit = env.get("bench_app", {}).get("commit", "")[:7] or subprocess.run(
         ["git", "-C", str(HERE), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
 
@@ -147,7 +146,7 @@ def main() -> None:
 | 반복 | (대상, N)마다 새 프로세스로 {sweep.get("reps", "-")}회, 순서를 섞음 |
 | 프레임 | 워밍업 {sweep.get("warmup_frames", "-")}프레임을 버리고 {sweep.get("frames", "-")}프레임 기록 |
 | 빌드 | {env.get("cmake_cache", {}).get("CMAKE_BUILD_TYPE:STRING", "Release")}, 프레임 제한·수직 동기화 끔 |
-| 움직임 | 시드로 정한 속도로 이동, 경계에서 튕김, 일정하게 회전. 고정 dt 1/60초. 세 대상이 같은 이동 함수를 씀 |
+| 움직임 | 시드로 정한 속도로 이동, 경계에서 튕김, 일정하게 회전. 고정 dt 1/60초. 네 대상이 같은 이동 함수를 씀 |
 | 통계 | 측정마다 평균·p50·p99, 반복 사이에서는 중앙값 |
 
 - `sfml-batched`: 사각형 N개를 `sf::VertexArray` 하나에 모아 `draw`를 한 번만 부름 (배칭했을 때의 하한선)
@@ -243,29 +242,8 @@ python3 tracy.py capture
         # 사람이 (작성) 자리를 모두 채운 보고서는 덮어쓰지 않는다. 다시 만들려면 지우고 돌린다.
         sys.exit(f"{target}는 이미 완성된 보고서다(\"{TODO}\" 자리가 없음). 다시 만들려면 지운 뒤 돌린다")
     target.write_text(doc, encoding="utf-8")
-
-    comment = f"""<!-- #30 종료 댓글 초안. 숫자는 결과에서 옮겼다. (작성) 자리를 채운 뒤 올린다. -->
-측정 결과는 SeoulTech-Fiat-Lux/meno_exp의 `benchmark/results/{out.name}/report/benchmark.md`에 정리했다 (meno `{meno.get("commit", "-")[:7]}`, {env.get("gl_renderer", "-")}).
-
-{chr(10).join(key_numbers(out, targets))}
-
-**배칭 판단:** {TODO}
-
-### 🇬🇧 TL;DR for English Readers
-
-**:sparkles: Proposed Feature:**
-A sprite-count benchmark (N = {", ".join(f"{n:,}" for n in sweep.get("counts", []))}) comparing batched SFML (one draw call), raw SFML (one draw call per sprite), meno's `Renderer`, and meno's `GameObject` + `Sprite` path, to decide whether meno needs sprite batching.
-
-**:hammer_and_wrench: Implementation Details:**
-A standalone benchmark program fetches meno at the frozen commit and uses only its public API, so meno itself is unchanged. It draws N moving sprites with frame limit and vsync off, updating exactly once per frame on every path; a runner repeats each (target, N) {sweep.get("reps", "-")} times in fresh processes and reports mean and p99 frame time. A Tracy build replays `Game::run()` step by step through public calls to break a frame into stages by self time. {TODO}
-
-**:microscope: Academic/Technical Significance:**
-{TODO} What the stage breakdown shows about where the cost of a high-level 2D API comes from.
-"""
-    (report / "issue-30-comment.md").write_text(comment, encoding="utf-8")
     print(f"보고서: {target}")
     print(f"그림 {len(pictures)}장: figures/, tracy/ (복사하지 않고 가리킴)")
-    print(f"댓글 초안: {report / 'issue-30-comment.md'}")
     if warn:
         print("초안 경고:\n  - " + "\n  - ".join(warn))
 

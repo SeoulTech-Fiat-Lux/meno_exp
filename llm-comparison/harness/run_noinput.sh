@@ -38,7 +38,7 @@ set -e
 end=$(date +%s.%N)
 wait "$ffmpeg_pid" 2>/dev/null || true
 
-# bc는 1초 미만을 ".31"처럼 앞의 0 없이 쓴다. 그대로 JSON에 넣으면 깨지므로 printf로 "0.310" 꼴로 맞춘다.
+# bc는 1초 미만을 ".31"처럼 앞의 0 없이 쓴다. 그대로 넣으면 JSON이 깨지므로 printf로 "0.310" 꼴로 맞춘다.
 # 이런 값은 게임이 시작 직후 죽는 회차에서 생긴다 (LC_ALL=C는 소수점이 쉼표인 로캘을 피하려는 것이다).
 elapsed=$(LC_ALL=C printf '%.3f' "$(echo "$end - $start" | bc)")
 early=$(echo "$elapsed < 10 && $exit_code != 124" | bc)

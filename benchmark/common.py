@@ -47,7 +47,7 @@ def git_info(repo: Path, path: str = ".") -> dict:
     """path를 주면 그 경로가 고쳐졌는지만 본다(이 저장소의 bench_app/처럼 저장소 일부만 볼 때)."""
     return {
         "commit": sh(["git", "-C", str(repo), "rev-parse", "HEAD"]),
-        # --dirty는 저장소 전체를 본다. path를 줬을 때는 붙이지 않는다(그 경로만 본 결과는 "dirty"에 있다).
+        # --dirty는 저장소 전체를 본다. path를 주었을 때는 붙이지 않는다(그 경로만 본 결과는 "dirty"에 있다).
         "describe": sh(["git", "-C", str(repo), "describe", "--tags", "--always",
                         *(["--dirty"] if path == "." else [])]),
         # 커밋하지 않은 변경이 있는 채로 잰 결과는 어느 코드로 쟀는지 재현할 수 없으므로 표시해 둔다.

@@ -1,5 +1,5 @@
 """그림(analysis/figures.py)과 빌드 오류 분류(analysis/errors.py)를 확인한다.
-matplotlib이 있으면 합성 데이터로 그림을 실제로 그리고, 없으면 그리기 전 단계까지만 본다 (하니스는 matplotlib이 필요 없음)."""
+matplotlib이 있으면 합성 데이터로 그림을 실제로 그리고, 없으면 그리기 전 단계까지만 본다 (하니스에는 matplotlib이 필요 없다)."""
 import json
 import random
 import sys
@@ -28,9 +28,9 @@ cases = [
 ]
 for log, condition, expected in cases:
     assert errors.classify(log, condition)[0] == expected, (log, errors.classify(log, condition))
-assert errors.SFML2.groups == 0  # 패턴을 이어 붙여도 역참조가 밀리지 않게
+assert errors.SFML2.groups == 0  # 패턴을 이어 붙여도 역참조가 밀리지 않아야 한다
 
-# 오류 유형마다 색이 고정 (조건에 없는 유형이 있어도 밀리지 않음)
+# 오류 유형마다 색이 고정된다 (조건에 없는 유형이 있어도 밀리지 않는다)
 assert len(figures.ERROR_TYPES) == len(figures.SERIES) and figures.CONDITION == {"meno": "#2a78d6", "sfml": "#eb6834"}
 assert figures.p_text({"p": 0.0004}, False) == "p < 0.001" and figures.p_text({"p_holm": 0.25}, True) == "Holm p = 0.250"
 assert figures.p_text({}, True) == "p = n/a"

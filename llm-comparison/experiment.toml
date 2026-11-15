@@ -15,7 +15,7 @@ seed = 20261114             # 회차 순서를 섞는 시드
 build_jobs = 4
 
 [games]
-pilot = ["01-pong"]                                         # D11: 퐁은 시범 전용
+pilot = ["01-pong"]                                         # 퐁은 시범 전용 (PLAN 2절)
 pilot_models = ["light"]                                    # 시범 실행은 경량 모델(claude-haiku-5-5) 하나로만 돌린다
 main = ["02-snake", "04-shooter", "05-card", "08-formation", "10-missile", "11-survivor"]
 
@@ -33,7 +33,7 @@ template_dir = "templates/sfml"
 context = "contexts/bundles/sfml.md"
 mock_source = "smoke/sfml/main.cpp"
 
-# 모델. 각자의 구독으로 돌리며(PLAN 2.2절 "구독 CLI"), API 비용은 들지 않는다.
+# 모델. 각자의 구독으로 돌리며(docs/harness.md "구독 CLI"), API 비용은 들지 않는다.
 #   backend = "claude-cli"  Claude Code(claude -p), Claude 구독 로그인
 #             "codex-cli"   Codex CLI(codex exec), ChatGPT 구독 로그인 (호출 코드는 harness/llm.py)
 #   id      회차 ID와 기록에 쓰는 이름. 실제 응답 모델 ID는 하니스가 회차마다 따로 기록한다.
@@ -57,7 +57,7 @@ effort = "medium"
 operator = "Claude Max (1인)"
 
 # GPT-5.5는 2026-10-14부터 ChatGPT 로그인 Codex에서 빠졌다(Codex 문서). 날짜 고정판도 쓸 수 없다.
-# Plus에서 쓸 수 있는 모델 중 gpt-6.1-sol로 정했다. 문서상 Plus의 기본 모델이며, 별칭이므로 회차마다 CLI 버전과 날짜를 기록한다.
+# Plus에서 쓸 수 있는 모델 중 gpt-6.1-sol로 정했다. 문서상 Plus의 기본 모델이다. 별칭이므로 회차마다 CLI 버전과 날짜를 기록한다.
 [[models]]
 tier = "other-vendor"
 id = "codex-cli/gpt-6.1-sol"

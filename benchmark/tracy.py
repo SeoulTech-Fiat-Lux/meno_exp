@@ -1,8 +1,8 @@
 """Tracy 병목 분석 (SeoulTech-Fiat-Lux/Meno#30, B3).
 
 측정(run.py)과 따로, Tracy를 켠 bench_app 빌드(BENCH_ENABLE_TRACY)로 meno-object를 캡처하고 구간(zone)별
-비용을 표·그림으로 낸다. Meno 코드는 고치지 않으므로, bench_app이 Game::run()이 하는 일을 공개 API로 같은
-순서로 직접 부르고(--loop direct) 호출 사이에 구간을 넣는다. Tracy를 켠 빌드의 수치는 측정 표에 쓰지 않는다.
+비용을 표·그림으로 낸다. Meno 코드는 고치지 않으므로, bench_app이 Game::run()이 하는 일을 같은 순서의
+공개 API 호출로 직접 하고(--loop direct) 호출 사이에 구간을 넣는다. Tracy를 켠 빌드의 수치는 측정 표에 쓰지 않는다.
 
 사용 (benchmark/ 에서):
     python3 tracy.py tools                          # bench.toml의 Tracy 버전으로 tracy-capture, tracy-csvexport 빌드
