@@ -1,8 +1,8 @@
 <!-- #30 종료 댓글 초안. 숫자는 결과에서 옮겼다. (작성) 자리를 채운 뒤 올린다. -->
 측정 결과는 SeoulTech-Fiat-Lux/meno_exp의 `benchmark/results/20261114-46f8934-rtx-5070-ti/report/benchmark.md`에 정리했다 (meno `46f8934`, D3D12 (NVIDIA GeForce RTX 5070 Ti)).
 
-- N = 10,000: sfml-batched 1.91 ms, sfml 10.18 ms, meno-renderer 10.24 ms, meno-object 10.15 ms
-- sfml/sfml-batched = 5.34, meno-renderer/sfml-batched = 5.37, meno-object/sfml-batched = 5.32
+- N = 10,000: sfml-batched 1.88 ms, sfml 10.21 ms, meno-renderer 10.08 ms, meno-object 10.17 ms
+- sfml/sfml-batched = 5.43, meno-renderer/sfml-batched = 5.37, meno-object/sfml-batched = 5.41
 
 **배칭 판단:** (작성)
 

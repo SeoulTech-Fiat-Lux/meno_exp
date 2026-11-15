@@ -1,8 +1,8 @@
 <!-- #30 종료 댓글 초안. 숫자는 결과에서 옮겼다. (작성) 자리를 채운 뒤 올린다. -->
 측정 결과는 SeoulTech-Fiat-Lux/meno_exp의 `benchmark/results/20261114-46f8934-radeon/report/benchmark.md`에 정리했다 (meno `46f8934`, D3D12 (AMD Radeon(TM) Graphics)).
 
-- N = 10,000: sfml-batched 4.11 ms, sfml 10.16 ms, meno-renderer 9.89 ms, meno-object 9.85 ms
-- sfml/sfml-batched = 2.47, meno-renderer/sfml-batched = 2.41, meno-object/sfml-batched = 2.40
+- N = 10,000: sfml-batched 3.95 ms, sfml 9.42 ms, meno-renderer 9.42 ms, meno-object 9.40 ms
+- sfml/sfml-batched = 2.39, meno-renderer/sfml-batched = 2.39, meno-object/sfml-batched = 2.38
 
 **배칭 판단:** (작성)
 

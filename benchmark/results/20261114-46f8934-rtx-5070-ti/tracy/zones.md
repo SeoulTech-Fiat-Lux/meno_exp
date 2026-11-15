@@ -4,15 +4,15 @@
 
 | 구간 | N=1,000 (ms) | N=10,000 (ms) | N=1,000 (%) | N=10,000 (%) |
 |---|---:|---:|---:|---:|
-| scene.draw | 0.263 | 9.825 | 9 | 70 |
-| window.display | 2.623 | 3.906 | 86 | 28 |
-| renderer.begin | 0.137 | 0.122 | 4 | 1 |
-| bench.move | 0.007 | 0.073 | 0 | 1 |
-| bench.apply | 0.005 | 0.060 | 0 | 0 |
-| app.events | 0.014 | 0.018 | 0 | 0 |
+| scene.draw | 0.252 | 9.941 | 9 | 71 |
+| window.display | 2.480 | 3.817 | 86 | 27 |
+| renderer.begin | 0.121 | 0.125 | 4 | 1 |
+| bench.move | 0.008 | 0.076 | 0 | 1 |
+| bench.apply | 0.005 | 0.054 | 0 | 0 |
+| app.events | 0.012 | 0.017 | 0 | 0 |
 | other zones | 0.001 | 0.001 | 0 | 0 |
-| not instrumented | 0.001 | 0.001 | 0 | 0 |
-| **프레임 평균** | **3.052** | **14.005** | 100 | 100 |
+| not instrumented | 0.000 | 0.001 | 0 | 0 |
+| **프레임 평균** | **2.878** | **14.032** | 100 | 100 |
 
 ## N=1,000 → N=10,000에서 늘어난 비용
 
@@ -20,11 +20,11 @@ N에 비례해 늘어나는 구간이 배칭·최적화 대상이다. 거의 그
 
 | 구간 | 늘어난 ms | 배수 |
 |---|---:|---:|
-| scene.draw | 9.562 | 37.3× |
-| window.display | 1.283 | 1.5× |
-| bench.move | 0.065 | 9.9× |
-| bench.apply | 0.055 | 11.9× |
-| app.events | 0.003 | 1.2× |
-| other zones | 0.000 | 1.1× |
-| not instrumented | 0.000 | 1.2× |
-| renderer.begin | -0.015 | 0.9× |
+| scene.draw | 9.689 | 39.4× |
+| window.display | 1.337 | 1.5× |
+| bench.move | 0.068 | 9.9× |
+| bench.apply | 0.049 | 11.2× |
+| app.events | 0.006 | 1.5× |
+| renderer.begin | 0.004 | 1.0× |
+| other zones | 0.000 | 1.5× |
+| not instrumented | 0.000 | 1.9× |

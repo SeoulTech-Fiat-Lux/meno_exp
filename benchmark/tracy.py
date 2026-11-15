@@ -252,7 +252,7 @@ def notes_template(out: Path, counts: list[int]) -> None:
 
 - 날짜, 캡처한 사람:
 - 환경: `../env.json`과 같은 PC인가 (GL 렌더러):
-- Tracy 버전: (bench.toml `[tracy].version`과 Meno의 FetchContent 태그가 같아야 함)
+- Tracy 버전: (bench.toml `[tracy].version`과 bench_app/CMakeLists.txt의 tracy GIT_TAG가 같아야 함)
 - N: {", ".join(f"{n:,}" for n in counts)}
 
 ## 관찰
