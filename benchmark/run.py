@@ -26,7 +26,7 @@ from pathlib import Path
 from build import build_bench
 from common import HERE, bench_command, load_config, run_env
 from probe import HostLoad, cpu_snapshot, cpu_usage, environment, probe_gl
-from results import raw_path, read_frame_ms, result_dir
+from results import ok_runs, raw_path, read_frame_ms, read_runs, result_dir
 
 
 def plan(sweep: dict) -> list[dict]:
@@ -96,6 +96,37 @@ def preflight(binary, cfg: dict, proc_env: dict, work: Path) -> None:
         sys.exit(f"사전 점검 실패: {failures}. bench.toml의 targets·command가 실행 파일과 맞는지 확인한다 (아무것도 기록하지 않음)")
 
 
+def measure_all(todo: list[dict], mock: bool, binary, run_cfg: dict, proc_env: dict, sweep: dict, out: Path,
+                log_path: Path, host: HostLoad | None) -> None:
+    """남은 측정을 차례로 돌리고 한 줄씩 runs.jsonl에 덧붙인다. 한 측정이 실패해도 다음으로 넘어간다."""
+    with log_path.open("a", encoding="utf-8") as log:
+        for i, job in enumerate(todo, 1):
+            csv_path = raw_path(out, job["target"], job["count"], job["rep"])
+            record = dict(job, ok=False)
+            if host:
+                record["host_cpu_pct"] = host.sample()  # 측정 직전. 측정 중에 물으면 그 질의가 CPU를 쓴다
+            start = time.monotonic()
+            before = cpu_snapshot()
+            try:
+                if mock:
+                    values = mock_frames(job, sweep["frames"])
+                    csv_path.write_text("frame,frame_ms\n" + "".join(
+                        f"{k},{v:.4f}\n" for k, v in enumerate(values)))
+                    read_frames(csv_path, sweep["frames"])
+                else:
+                    run_binary(binary, run_cfg, proc_env, job, sweep["warmup_frames"], sweep["frames"],
+                               csv_path, record)
+                    record["cpu"] = cpu_usage(before, cpu_snapshot())
+                record["ok"] = True
+            except RUN_ERRORS as e:
+                record["error"] = str(e)
+            record["wall_s"] = round(time.monotonic() - start, 2)
+            log.write(json.dumps(record, ensure_ascii=False) + "\n")
+            log.flush()
+            print(f"[{i}/{len(todo)}] rep {job['rep']} {job['target']:<14} N={job['count']:<6} "
+                  f"{'OK' if record['ok'] else '실패: ' + record['error']}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--bin", type=Path, help="이미 빌드한 실행 파일. 주면 빌드하지 않는다")
@@ -119,12 +150,7 @@ def main() -> None:
     out = args.out or result_dir(args.mock, gl)
     jobs = plan(cfg["sweep"])
     log_path = out / "runs.jsonl"
-    done = set()
-    if log_path.exists():
-        for line in log_path.read_text(encoding="utf-8").splitlines():
-            r = json.loads(line)
-            if r["ok"]:
-                done.add(key(r))
+    done = ok_runs(read_runs(out))
     todo = [j for j in jobs if key(j) not in done]
     print(f"결과 폴더: {out}\n전체 {len(jobs)}개, 남은 것 {len(todo)}개")
     if args.dry_run:
@@ -157,35 +183,11 @@ def main() -> None:
         env_path.write_text(json.dumps(env, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     host = None if args.mock else HostLoad()
-    with log_path.open("a", encoding="utf-8") as log:
-        for i, job in enumerate(todo, 1):
-            csv_path = raw_path(out, job["target"], job["count"], job["rep"])
-            record = dict(job, ok=False)
-            if host:
-                record["host_cpu_pct"] = host.sample()  # 측정 직전. 측정 중에 물으면 그 질의가 CPU를 쓴다
-            start = time.monotonic()
-            before = cpu_snapshot()
-            try:
-                if args.mock:
-                    values = mock_frames(job, sweep["frames"])
-                    csv_path.write_text("frame,frame_ms\n" + "".join(
-                        f"{k},{v:.4f}\n" for k, v in enumerate(values)))
-                    read_frames(csv_path, sweep["frames"])
-                else:
-                    run_binary(binary, run_cfg, proc_env, job, sweep["warmup_frames"], sweep["frames"],
-                               csv_path, record)
-                    record["cpu"] = cpu_usage(before, cpu_snapshot())
-                record["ok"] = True
-            except RUN_ERRORS as e:
-                record["error"] = str(e)
-            record["wall_s"] = round(time.monotonic() - start, 2)
-            log.write(json.dumps(record, ensure_ascii=False) + "\n")
-            log.flush()
-            print(f"[{i}/{len(todo)}] rep {job['rep']} {job['target']:<14} N={job['count']:<6} "
-                  f"{'OK' if record['ok'] else '실패: ' + record['error']}")
-
-    if host:
-        host.close()
+    try:
+        measure_all(todo, args.mock, binary, run_cfg, proc_env, sweep, out, log_path, host)
+    finally:  # 중간에 멈춰도(Ctrl+C 등) 띄워 둔 PowerShell을 닫는다
+        if host:
+            host.close()
     print(f"요약: python3 summarize.py {out}")
 
 
