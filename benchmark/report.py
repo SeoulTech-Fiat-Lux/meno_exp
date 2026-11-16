@@ -96,8 +96,10 @@ def filled_notes(notes: str) -> str:
     parts = []
     for title in ("관찰", "판단"):
         m = re.search(rf"^## {title}\s*$(.*?)(?=^## |\Z)", notes, re.S | re.M)
-        items = [l for l in (m.group(1).strip().splitlines() if m else []) if l.strip()]
-        if any(not l.rstrip().endswith(":") for l in items):
+        # 채우지 않은 항목(':'로 끝남)은 빼고 채운 줄만 옮긴다.
+        items = [l for l in (m.group(1).strip().splitlines() if m else [])
+                 if l.strip() and not l.rstrip().endswith(":")]
+        if items:
             parts.append(f"**{title}** (tracy/notes.md, 사람이 씀)\n\n" + "\n".join(items))
     return "\n\n".join(parts)
 

@@ -205,7 +205,7 @@ def report(out: Path, tcfg: dict) -> None:
     (out / "zones.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     print("\n".join(lines))
     figure(out, counts, stacks, labels)
-    notes_template(out, counts)
+    notes_template(out)
 
 
 def figure(out: Path, counts: list[int], stacks: dict, labels: list[str]) -> None:
@@ -247,35 +247,31 @@ def figure(out: Path, counts: list[int], stacks: dict, labels: list[str]) -> Non
     print(f"그림: {out / 'zones.png'}")
 
 
-def notes_template(out: Path, counts: list[int]) -> None:
+def notes_template(out: Path) -> None:
+    """사람이 쓰는 해석의 양식. report.py는 "관찰"과 "판단" 두 절만 그 GPU의 병목 절에 붙인다.
+    GPU, Tracy 버전, N은 env.json·bench.toml·zones.md에 이미 있으므로 묻지 않는다. 있으면 덮어쓰지 않는다."""
     path = out / "notes.md"
     if path.exists():
         return
-    path.write_text(f"""# Tracy 병목 분석 노트
+    gpu = read_json(out.parent / "env.json").get("gl_renderer", "")
+    path.write_text(f"""# Tracy 병목 분석 노트{f" ({gpu})" if gpu else ""}
 
-자동 표와 그림은 `zones.md`, `zones.png`. 이 파일은 사람이 쓴다(다시 만들지 않음).
-
-## 캡처 조건
-
-- 날짜, 캡처한 사람:
-- 환경 (GL 렌더러는 tracy.py capture가 `../env.json`과 같은지 확인함):
-- Tracy 버전: (bench.toml `[tracy].version`과 bench_app/CMakeLists.txt의 tracy GIT_TAG가 같아야 함)
-- N: {", ".join(f"{n:,}" for n in counts)}
+숫자는 zones.md(비율·증가량)와 ../summary.md(프레임 시간)에서 옮긴다. Tracy를 켜면 프레임이 느려지므로 zones.md의 ms는 그대로 쓰지 않는다.
+`scene.draw`와 `window.display`는 합쳐서 읽는다. 쓰지 않을 항목은 줄째 지운다(빈 항목은 보고서에 들어가지 않는다).
+두 GPU를 묶은 결론은 여기가 아니라 SeoulTech-Fiat-Lux/Meno#30 댓글에 쓴다.
 
 ## 관찰
 
-- 가장 비싼 구간과 그 비율 (N이 가장 클 때):
-- N에 비례해 늘어나는 구간 (`zones.md`의 "늘어난 비용"):
-- 거의 그대로인 구간(고정 비용):
-- `not instrumented`가 크면 어디가 빠졌는가:
-- Tracy 화면 캡처 (`*.png`)와 그 설명:
+- 가장 비싼 구간 (N이 가장 클 때):
+- N에 비례해 는 구간 (zones.md "늘어난 비용"):
+- 고정 비용 구간:
+- 이 GPU에서 다른 점:
 
 ## 판단
 
 - 병목:
-- 배칭으로 줄어들 부분 (그리기 호출 수에 비례하는 구간):
-- 배칭으로 안 줄어드는 부분 (장면 순회, 변환 갱신 등):
-- 결론과 다음 할 일 (SeoulTech-Fiat-Lux/Meno#30에 옮길 내용):
+- 배칭으로 줄어드는 몫:
+- 배칭으로 안 줄어드는 몫:
 """, encoding="utf-8")
     print(f"양식: {path}")
 
