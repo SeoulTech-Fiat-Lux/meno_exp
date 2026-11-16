@@ -1,10 +1,11 @@
-"""최종 보고서 (SeoulTech-Fiat-Lux/Meno#30).
+"""보고서 초안 (SeoulTech-Fiat-Lux/Meno#30).
 
-GPU마다 잰 결과 폴더를 모아 보고서 하나를 만든다. 숫자와 문장은 모두 결과 파일에서 계산하므로 사람이 채울 자리는
-없다. tracy/notes.md에 사람이 쓴 해석이 있으면 그 GPU의 "병목" 절에 덧붙인다. 실행할 때마다 덮어쓴다.
+GPU마다 잰 결과 폴더를 모아 보고서 초안 하나를 만든다. 숫자, 표, 그림은 결과 파일에서 옮기고, tracy/notes.md에
+사람이 쓴 해석이 있으면 그 GPU의 "병목" 절에 덧붙인다. 초안은 실행할 때마다 덮어쓰며 커밋하지 않는다.
+최종본(results/report.md)은 사람이 초안을 다듬어 저장한 것이고, 이 스크립트는 최종본을 건드리지 않는다.
 
 사용 (benchmark/ 에서, 결과 폴더마다 vsync_check.py·run.py·summarize.py·figures.py·tracy.py capture를 마친 뒤):
-    python3 report.py results/<날짜>-<meno 커밋>-<GPU> [결과 폴더 ...]      # → results/report.md
+    python3 report.py results/<날짜>-<meno 커밋>-<GPU> [결과 폴더 ...]      # → results/report-draft.md
 
 맨 위에 "경고"가 있으면 그 결과는 쓰지 않는다. 원인을 고치고 다시 잰 뒤 돌린다.
 """
@@ -14,7 +15,6 @@ import argparse
 import csv
 import os
 import re
-import statistics
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -86,9 +86,43 @@ def read(path: Path) -> str:
 
 
 def body(md: str, shift: int = 0) -> str:
-    """요약 파일을 문서에 넣을 때 맨 위 제목(#)은 빼고, 소제목은 shift 단계 내린다."""
-    lines = [l for l in md.splitlines() if not l.startswith("# ")]
+    """요약 파일을 문서에 넣을 때 맨 위 제목(#)과 저장소 파일을 가리키는 끝줄("값은 반복 사이의 …")은 빼고,
+    소제목은 shift 단계 내린다. 중앙값이라는 설명은 보고서의 "측정 방법"에 있다."""
+    lines = [l for l in md.splitlines() if not l.startswith(("# ", "값은 반복 사이의 중앙값이다."))]
     return "\n".join(("#" * shift + l) if re.match(r"#{2,4} ", l) else l for l in lines).strip()
+
+
+# Tracy 표에서 빼는 구간. 둘 다 프레임의 0%에 가까워 읽는 사람에게 뜻이 없다(zones.md에는 남아 있다).
+HIDDEN_ZONES = ("other zones", "not instrumented")
+
+
+def tracy_tables(f: Folder) -> list[str]:
+    """zones.json으로 구간별 비용 표와 N에 따른 증가 표를 만든다. zones.md는 도구 설명이 섞여 있어 옮기지 않는다."""
+    z, tcfg = f.zones, f.env.get("config", {}).get("tracy", {})
+    counts = z["counts"]
+    names = [name for name in z["zones"] if name not in HIDDEN_ZONES]  # zones.json은 가장 큰 N에서 비싼 순이다
+    pct = lambda name, n: 100 * z["zones"][name][n] / z["frame_ms"][n]  # noqa: E731
+    lines = [f"워밍업 {tcfg.get('warmup_frames', '-')}프레임을 제외한 {tcfg.get('frames', 0):,}프레임에서 구한 "
+             "프레임당 self time(ms)이다. 구간끼리 겹치지 않으므로 모두 더하면 프레임 시간이 된다.", "",
+             "| 구간 | " + " | ".join(f"N={n:,} (ms)" for n in counts) + " | "
+             + " | ".join(f"N={n:,} (%)" for n in counts) + " |",
+             "|---|" + "---:|" * (2 * len(counts))]
+    lines += [f"| {name} | " + " | ".join(f"{z['zones'][name][n]:.3f}" for n in counts) + " | "
+              + " | ".join(f"{pct(name, n):.0f}" for n in counts) + " |" for name in names]
+    lines.append("| **프레임 평균** | " + " | ".join(f"**{z['frame_ms'][n]:.3f}**" for n in counts) + " | "
+                 + " | ".join("100" for _ in counts) + " |")
+    if len(counts) >= 2:
+        a, b = counts[0], counts[-1]
+        grow = lambda name: z["zones"][name][b] - z["zones"][name][a]  # noqa: E731
+        lines += ["", f"#### N={a:,} → N={b:,}에서 늘어난 비용", "",
+                  "N에 비례해 늘어나는 구간은 배칭과 최적화의 대상이고, 거의 변하지 않는 구간은 고정 비용이다.", "",
+                  "| 구간 | 늘어난 ms | 배수 |", "|---|---:|---:|"]
+        for name in sorted(names, key=lambda x: -grow(x)):
+            d = grow(name)
+            ratio = z["zones"][name][b] / z["zones"][name][a] if z["zones"][name][a] > 0 else None
+            lines.append(f"| {name} | {0.0 if abs(d) < 5e-4 else d:.3f} | "
+                         + (f"{ratio:.1f}×" if ratio is not None else "-") + " |")
+    return lines
 
 
 def filled_notes(notes: str) -> str:
@@ -100,27 +134,27 @@ def filled_notes(notes: str) -> str:
         items = [l for l in (m.group(1).strip().splitlines() if m else [])
                  if l.strip() and not l.rstrip().endswith(":")]
         if items:
-            parts.append(f"**{title}** (tracy/notes.md, 사람이 씀)\n\n" + "\n".join(items))
+            parts.append(f"#### {title}\n\n" + "\n".join(items))
     return "\n\n".join(parts)
 
 
 def ratio_range(folders: list[Folder], a: str, b: str) -> str:
-    """모든 GPU, 모든 N에서 a/b(평균)의 범위."""
+    """모든 GPU, 모든 N에서 a/b(평균)의 범위. 물결표(~)는 두 개가 한 줄에 있으면 Markdown 취소선이 되므로 하이픈을 쓴다."""
     xs = [f.mean(a, n) / f.mean(b, n) for f in folders for n in f.counts if f.mean(a, n) and f.mean(b, n)]
-    return f"{min(xs):.2f}~{max(xs):.2f}" if xs else "-"
+    return f"{min(xs):.2f}-{max(xs):.2f}" if xs else "-"
 
 
-def budget(f: Folder) -> str:
-    """대상마다 p99가 60 fps 예산 안인 가장 큰 N. 모든 대상이 끝까지 안이면 한 줄로 줄인다."""
-    def last_ok(t: str) -> int | None:
+def budget(folders: list[Folder]) -> str:
+    """대상마다 p99가 60 fps 예산 안에 드는 가장 큰 N. 모든 GPU의 모든 대상이 끝까지 들면 한 문장으로 줄인다."""
+    def last_ok(f: Folder, t: str) -> int | None:
         ok = [n for n in f.counts if (v := f.mean(t, n, "p99")) is not None and v <= BUDGET_MS]
         return ok[-1] if ok else None
 
-    last = {t: last_ok(t) for t in f.targets}
-    if all(n == f.counts[-1] for n in last.values()):
-        return f"{f.gpu}는 모든 대상이 측정한 가장 큰 N({f.counts[-1]:,})까지 안"
-    return f"{f.gpu}: " + ", ".join(f"`{t}` " + (f"N = {n:,}까지 안" if n else "가장 작은 N에서도 넘음")
-                                    for t, n in last.items())
+    if all(last_ok(f, t) == f.counts[-1] for f in folders for t in f.targets):
+        return f"모든 GPU에서 모든 대상이 측정한 가장 큰 N({folders[0].counts[-1]:,})까지 예산 안에 든다."
+    # 대상 이름 뒤 조사(이/가)가 이름마다 달라지므로 "이름: 값" 꼴로 적는다.
+    return " ".join(f"{f.gpu}에서 예산 안에 드는 가장 큰 N은 " + ", ".join(
+        f"`{t}` " + (f"{n:,}" if (n := last_ok(f, t)) else "없음") for t in f.targets) + "이다." for f in folders)
 
 
 # --- 경고 -------------------------------------------------------------------
@@ -184,17 +218,12 @@ def cpu_values(runs: list[dict]) -> tuple[list[float], list[float]]:
 
 
 def cpu_state(f: Folder) -> str:
+    """측정 환경 표의 전원 칸. 측정 중 CPU 사용률은 측정이 괜찮았는지 점검하는 값이라 경고로만 쓴다."""
     power = f.env.get("windows_power", {})
-    parts = []
-    if power:
-        parts.append(f"전원 모드 {power.get('power_mode', '?')}, 최대 프로세서 상태 "
-                     f"{power.get('max_processor_state', {}).get('ac', '?')}%")
-    host, other = cpu_values(f.runs)
-    if host:
-        parts.append(f"측정 직전 Windows CPU 중앙값 {statistics.median(host):.0f}%")
-    if other:
-        parts.append(f"측정 중 다른 WSL 작업 최대 {max(other):.2f}코어")
-    return ", ".join(parts) or "기록 없음"
+    if not power:
+        return "기록 없음"
+    return (f"전원 모드 {power.get('power_mode', '?')}, 최대 프로세서 상태 "
+            f"{power.get('max_processor_state', {}).get('ac', '?')}%")
 
 
 # --- 요약 (모두 결과 파일에서 계산) --------------------------------------------
@@ -202,26 +231,30 @@ def cpu_state(f: Folder) -> str:
 def summary(folders: list[Folder]) -> list[str]:
     f0 = folders[0]
     n = f0.counts[-1]
-    lines = [f"N = {n:,}에서 프레임 시간 평균(ms):", "",
+    lines = [f"N = {n:,}에서의 평균 프레임 시간(ms)은 다음과 같다.", "",
              "| 대상 | " + " | ".join(f.gpu for f in folders) + " |", "|---|" + "---:|" * len(folders)]
     lines += [f"| `{t}` | " + " | ".join(f"{v:.2f}" if (v := f.mean(t, n)) else "-" for f in folders) + " |"
               for t in f0.targets]
     lines.append("")
     if all(f.mean("sfml", n) and f.mean("sfml-batched", n) for f in folders):
-        lines.append("- **배칭 효과** (`sfml` / `sfml-batched`, N = " + f"{n:,}): " + ", ".join(
-            f"{f.gpu} {f.mean('sfml', n) / f.mean('sfml-batched', n):.2f}배" for f in folders))
-    lines.append(f"- **meno가 더하는 비용**: `meno-renderer` / `sfml` {ratio_range(folders, 'meno-renderer', 'sfml')}, "
-                 f"`meno-object` / `meno-renderer` {ratio_range(folders, 'meno-object', 'meno-renderer')} "
-                 "(모든 GPU·N의 범위. 1.00이면 더하는 비용이 없다)")
-    lines.append("- **60 fps 예산** (p99 ≤ 16.7 ms): " + "; ".join(budget(f) for f in folders))
+        lines.append(f"- **배칭 효과**: N = {n:,}에서 `sfml`의 프레임 시간은 `sfml-batched`의 " + ", ".join(
+            f"{f.mean('sfml', n) / f.mean('sfml-batched', n):.2f}배({f.gpu})" for f in folders) + "이다.")
+    lines.append(f"- **meno가 더하는 비용**: 모든 GPU와 N에서 `meno-renderer`/`sfml`은 "
+                 f"{ratio_range(folders, 'meno-renderer', 'sfml')}, `meno-object`/`meno-renderer`는 "
+                 f"{ratio_range(folders, 'meno-object', 'meno-renderer')}이다. 1.00에 가까울수록 더하는 비용이 없다는 뜻이다.")
+    lines.append("- **60 fps 예산**(p99 16.7 ms 이하): " + budget(folders))
     lines += cross_gpu(folders, n)
+    tracy = []
     for f in folders:
         if f.zones:
             m = max(f.zones["counts"])
             share = {z: 100 * by[m] / f.zones["frame_ms"][m] for z, by in f.zones["zones"].items()}
             top = sorted(share, key=lambda z: -share[z])[:2]
-            lines.append(f"- **Tracy** ({f.gpu}, `{f.zones.get('target', 'meno-object')}` N = {m:,}): "
-                         + ", ".join(f"`{z}` {share[z]:.0f}%" for z in top))
+            tracy.append(f"{f.gpu}에서는 " + ", ".join(f"`{z}` {share[z]:.0f}%" for z in top))
+    if tracy:
+        z0 = next(f.zones for f in folders if f.zones)
+        lines.append(f"- **Tracy**(`{z0.get('target', 'meno-object')}`, N = {max(z0['counts']):,}): 프레임 시간 중 "
+                     + ", ".join(tracy) + "를 차지한다.")
     return lines
 
 
@@ -237,13 +270,14 @@ def cross_gpu(folders: list[Folder], n: int) -> list[str]:
 
     plain, batched = spread("sfml"), spread("sfml-batched")
     if plain <= SAME_COST and batched > 2 * plain:
-        verdict = "배칭하지 않은 비용은 GPU를 바꿔도 거의 같으므로 CPU(그리기 호출 제출)가 정한다. 배칭하면 GPU가 정한다."
+        verdict = ("따라서 배칭하지 않을 때의 비용은 CPU(그리기 호출 제출)가 결정하고, "
+                   "배칭하면 GPU가 결정한다.")
     elif plain <= SAME_COST:
-        verdict = "배칭 여부와 관계없이 GPU를 바꿔도 비용이 거의 같다. CPU가 정한다."
+        verdict = "따라서 배칭 여부와 관계없이 비용은 CPU가 결정한다."
     else:
-        verdict = "배칭하지 않은 비용도 GPU에 따라 달라진다. GPU가 정하는 몫이 있다."
-    return [f"- **GPU 사이 차이** (같은 CPU, N = {n:,}): `sfml` {100 * plain:.0f}%, `sfml-batched` {100 * batched:.0f}%. "
-            f"→ {verdict} (판정 기준: `sfml` 차이 {100 * SAME_COST:.0f}% 이하)"]
+        verdict = "따라서 배칭하지 않을 때의 비용에도 GPU가 결정하는 몫이 있다."
+    return [f"- **GPU 사이 차이**(같은 CPU, N = {n:,}): GPU에 따라 `sfml`은 {100 * plain:.0f}%, "
+            f"`sfml-batched`는 {100 * batched:.0f}% 차이가 난다. {verdict}"]
 
 
 # --- 문서 -------------------------------------------------------------------
@@ -251,8 +285,11 @@ def cross_gpu(folders: list[Folder], n: int) -> list[str]:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folders", type=Path, nargs="+", help="결과 폴더 (GPU마다 하나)")
-    ap.add_argument("--out", type=Path, default=HERE / "results" / "report.md")
+    ap.add_argument("--out", type=Path, default=HERE / "results" / "report-draft.md",
+                    help="초안 경로. 최종본(results/report.md)은 사람이 다듬어 저장하므로 여기에 주지 않는다")
     args = ap.parse_args()
+    if args.out.resolve() == (HERE / "results" / "report.md").resolve():
+        sys.exit("results/report.md는 사람이 다듬은 최종본이라 덮어쓰지 않는다. 초안은 기본 경로(report-draft.md)에 만든다")
     folders = [load(p.resolve()) for p in args.folders]
     doc_dir = args.out.resolve().parent
 
@@ -264,34 +301,40 @@ def main() -> None:
     sweep = f0.env.get("config", {}).get("sweep", {})
 
     warn = [f"{f.gpu}: {w}" for f in folders for w in warnings(f)] + cross_warnings(folders)
-    head = (["> **경고: 아래를 해결하기 전에는 이 결과를 쓰지 않는다.**", ">", *(f"> - {w}" for w in warn), ""]
+    head = (["> **경고: 아래 문제를 해결하기 전에는 이 결과를 사용하지 않는다.**", ">", *(f"> - {w}" for w in warn), ""]
             if warn else [])
-    env_rows = [("날짜", lambda f: f.env.get("recorded_at", "-")),
+
+    def vsync_cell(f: Folder) -> str:
+        if not f.vsync:
+            return "없음"
+        if not f.vsync.get("ok"):
+            return f.vsync.get("message", "실패")
+        return f"통과(vsync 끔 중앙값 {f.vsync['off']['median_ms']:.2f} ms, 주사율 주기에 묶이지 않음)"
+
+    env_rows = [("측정 시각", lambda f: f.env.get("recorded_at", "-")[:16].replace("T", " ")),
                 ("GPU (GL 렌더러)", lambda f: f.env.get("gl_renderer", "-")),
                 ("CPU", lambda f: f"{f.env.get('cpu', '-')} ({f.env.get('nproc', '-')}스레드)"),
                 ("CPU 상태", cpu_state),
                 ("OpenGL", lambda f: f.env.get("gl_version", "-")),
-                ("OS", lambda f: f.env.get("platform", "-")),
                 ("meno", lambda f: f"`{f.env.get('meno', {}).get('commit', '-')[:7]}`"),
-                ("측정 프로그램", lambda f: f"meno_exp `{f.env.get('bench_app', {}).get('commit', '-')[:7]}`의 bench_app"),
-                ("수직 동기화 확인", lambda f: f.vsync.get("message", "없음")),
-                ("결과 폴더", lambda f: f"[{f.out.name}]({rel(f.out)})")]
+                ("수직 동기화 확인", vsync_cell)]
 
     doc = ["# 성능 측정: 스프라이트 N개 그리기", "", *head,
-           "배칭을 적용할지 판단할 근거로, 스프라이트 N개를 그리는 프레임 시간을 네 경로로 쟀다(SeoulTech-Fiat-Lux/Meno#30). "
-           "이 문서는 `report.py`가 결과 폴더에서 만든다. 고치지 말고 다시 만든다.", "",
+           "배칭 적용 여부를 판단하기 위해, 스프라이트 N개를 그리는 데 걸리는 프레임 시간을 네 가지 경로로 측정했다"
+           "(SeoulTech-Fiat-Lux/Meno#30).", "",
            "## 요약", "", *summary(folders), "",
            "## 측정 방법", "",
            "| 대상 | 프레임마다 하는 일 |", "|---|---|",
-           "| `sfml-batched` | 사각형 N개를 `sf::VertexArray` 하나에 모아 `draw` 1번 (배칭했을 때의 하한) |",
-           "| `sfml` | SFML을 직접 써서 `sf::Sprite`마다 `draw` (N번) |",
-           "| `meno-renderer` | meno `Game` 루프에서 `Renderer::draw` N번 |",
-           "| `meno-object` | `GameObject` + `Sprite` 컴포넌트 N개 (사용자가 실제로 쓰는 경로) |", "",
-           f"- N: {', '.join(f'{n:,}' for n in sweep.get('counts', []))}. (대상, N)마다 새 프로세스로 "
-           f"{sweep.get('reps', '-')}회, 순서를 섞음. 워밍업 {sweep.get('warmup_frames', '-')}프레임을 버리고 "
-           f"{sweep.get('frames', '-')}프레임 기록.",
-           "- Release 빌드, 프레임 제한·수직 동기화 끔. 네 대상이 같은 텍스처·시드·이동 함수를 쓴다(고정 dt 1/60초).",
-           "- 측정마다 평균·p50·p99를 내고, 반복 사이에서는 중앙값을 쓴다.", "",
+           "| `sfml-batched` | 사각형 N개를 `sf::VertexArray` 하나에 모아 `draw`를 한 번 호출한다(배칭했을 때의 하한). |",
+           "| `sfml` | SFML의 `sf::Sprite`마다 `draw`를 호출한다(N번). |",
+           "| `meno-renderer` | meno의 `Game` 루프에서 `Renderer::draw`를 N번 호출한다. |",
+           "| `meno-object` | `GameObject`와 `Sprite` 컴포넌트 N개로 그린다(사용자가 실제로 쓰는 경로). |", "",
+           f"- N은 {', '.join(f'{n:,}' for n in sweep.get('counts', []))}이다. (대상, N)마다 새 프로세스로 "
+           f"{sweep.get('reps', '-')}회 측정했으며, 측정 순서는 무작위로 섞었다.",
+           f"- 측정마다 워밍업 {sweep.get('warmup_frames', '-')}프레임을 버리고 {sweep.get('frames', 0):,}프레임을 기록해 "
+           "프레임 시간의 평균, p50, p99를 구했다. 표의 값은 반복 사이의 중앙값이다.",
+           "- Release 빌드에서 프레임 제한과 수직 동기화를 끄고 측정했다. 네 대상은 같은 텍스처, 시드, "
+           "이동 함수(고정 dt 1/60초)를 쓴다.", "",
            "## 측정 환경", "",
            "| 항목 | " + " | ".join(f.gpu for f in folders) + " |", "|---|" + "---|" * len(folders),
            *(f"| {name} | " + " | ".join(str(get(f)) for f in folders) + " |" for name, get in env_rows), ""]
@@ -304,30 +347,28 @@ def main() -> None:
                 body(read(f.out / "summary.md")), "",
                 f"![단계별 비율]({fig('2-stages.png')})", "",
                 f"![스프라이트 하나당 비용]({fig('3-per-sprite.png')})", "",
-                f"![큰 N에서 프레임 시간 분포]({fig('4-distribution.png')})", "",
-                f"그림의 값: [figures.md]({fig('figures.md')})", ""]
+                f"![큰 N에서 프레임 시간 분포]({fig('4-distribution.png')})", ""]
     doc += ["## 병목 (Tracy)", "",
-            "Tracy를 켠 빌드로 `meno-object`를 캡처했다. 프레임이 느려지므로 구간 비율만 보고, 프레임 시간은 위 표를 쓴다. "
-            "OpenGL 드라이버는 그리기 명령을 모아 두었다가 나중에 처리할 수 있어서, 그리기 비용 일부가 "
-            "`window.display`에 잡히기도 한다. `scene.draw`와 `window.display`는 합쳐서 읽는다.", ""]
+            "Tracy를 켠 빌드로 `meno-object`를 캡처했다. 계측 때문에 프레임이 느려지므로 구간의 비율만 해석하고, "
+            "프레임 시간은 위의 표를 따른다. OpenGL 드라이버는 그리기 명령을 모아 두었다가 나중에 처리할 수 있으므로, "
+            "그리기 비용의 일부가 `window.display`에 잡히기도 한다. 따라서 `scene.draw`와 `window.display`는 합쳐서 읽는다.", ""]
     for f in folders:
         if not f.zones:
             continue
         doc += [f"### {f.gpu}", "", f"![Tracy 구간별 프레임 비용]({rel(f.out / 'tracy' / 'zones.png')})", "",
-                body(read(f.out / "tracy" / "zones.md"), 2), ""]
+                *tracy_tables(f), ""]
         if f.notes:
             doc += [f.notes, ""]
     doc += ["## 한계", "",
-            "- 수치는 위 측정 환경 기준이다. 다른 GPU·드라이버·CPU에서는 절대값이 달라진다.",
-            *(["- WSL2(WSLg)에서 쟀다. Windows 화면 합성을 거치고, OpenGL 호출을 Direct3D 12로 바꾸는 비용이 CPU에 더해진다."]
-              if any(f.env.get("wsl") for f in folders) else []),
-            f"- CPU는 {', '.join(sorted({f.env.get('cpu', '?') for f in folders}))}만 썼다. 느린 CPU에서의 수치는 없다.",
-            "- Tracy 결과는 계측을 켠 빌드에서 얻었다. 비율을 보는 데 쓰고 프레임 시간 표에는 쓰지 않았다.", "",
-            "## 재현", "", "meno_exp의 `benchmark/README.md`를 위에서부터 따라 한다.", ""]
+            "- 모든 수치는 위의 측정 환경을 기준으로 한다. GPU, 드라이버, CPU가 달라지면 절댓값도 달라진다.",
+            *(["- WSL2(WSLg)에서 측정했으므로 Windows 화면 합성을 거치며, OpenGL 호출을 Direct3D 12로 변환하는 비용이 "
+               "CPU에 더해진다."] if any(f.env.get("wsl") for f in folders) else []),
+            f"- CPU는 {', '.join(sorted({f.env.get('cpu', '?') for f in folders}))} 한 종류만 사용했으므로, "
+            "느린 CPU에서의 수치는 얻지 못했다.", ""]
     text = re.sub(r"\n{3,}", "\n\n", "\n".join(doc))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text, encoding="utf-8", newline="\n")
-    print(f"보고서: {args.out}")
+    print(f"초안: {args.out}\n다듬어 results/report.md로 저장한다(초안은 커밋하지 않는다).")
     if warn:
         print("경고:\n  - " + "\n  - ".join(warn))
 

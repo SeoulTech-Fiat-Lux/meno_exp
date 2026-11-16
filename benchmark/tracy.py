@@ -168,10 +168,10 @@ def report(out: Path, tcfg: dict) -> None:
     labels = named + ["other zones", "not instrumented"]
 
     lines = ["# Tracy 구간별 비용 (자동 생성)", "",
-             f"워밍업 {tcfg['warmup_frames']}프레임을 뺀 기록 프레임(" +
-             ", ".join(f"N={n:,}: {data[n][2]}개" for n in counts) + ")의 프레임당 self time(ms). "
-             "구간끼리 겹치지 않으므로 더하면 프레임 시간이 된다. "
-             f"`not instrumented`는 `{FRAME_ZONE}` 구간의 self time, 곧 어느 하위 구간에도 속하지 않은 시간이다.", "",
+             f"워밍업 {tcfg['warmup_frames']}프레임을 제외한 기록 프레임(" +
+             ", ".join(f"N={n:,}: {data[n][2]}개" for n in counts) + ")에서 구한 프레임당 self time(ms)이다. "
+             "구간끼리 겹치지 않으므로 모두 더하면 프레임 시간이 된다. "
+             f"`not instrumented`는 `{FRAME_ZONE}` 구간의 self time으로, 어느 하위 구간에도 속하지 않은 시간이다.", "",
              "| 구간 | " + " | ".join(f"N={n:,} (ms)" for n in counts) + " | " +
              " | ".join(f"N={n:,} (%)" for n in counts) + " |",
              "|---|" + "---:|" * (2 * len(counts))]
@@ -191,7 +191,7 @@ def report(out: Path, tcfg: dict) -> None:
     if len(counts) >= 2:
         a, b = counts[0], counts[-1]
         lines += ["", f"## N={a:,} → N={b:,}에서 늘어난 비용", "",
-                  "N에 비례해 늘어나는 구간이 배칭·최적화 대상이다. 거의 그대로인 구간은 고정 비용이다.", "",
+                  "N에 비례해 늘어나는 구간은 배칭과 최적화의 대상이고, 거의 변하지 않는 구간은 고정 비용이다.", "",
                   "| 구간 | 늘어난 ms | 배수 |", "|---|---:|---:|"]
         for z in sorted(labels, key=lambda z: -(stacks[b][1][z] - stacks[a][1][z])):
             d = stacks[b][1][z] - stacks[a][1][z]
@@ -256,7 +256,7 @@ def notes_template(out: Path) -> None:
     gpu = read_json(out.parent / "env.json").get("gl_renderer", "")
     path.write_text(f"""# Tracy 병목 분석 노트{f" ({gpu})" if gpu else ""}
 
-숫자는 zones.md(비율·증가량)와 ../summary.md(프레임 시간)에서 옮긴다. Tracy를 켜면 프레임이 느려지므로 zones.md의 ms는 그대로 쓰지 않는다.
+숫자는 zones.md(비율·증가량)와 결과 폴더의 summary.md(프레임 시간)에서 옮긴다. Tracy를 켜면 프레임이 느려지므로 zones.md의 ms는 그대로 쓰지 않는다.
 `scene.draw`와 `window.display`는 합쳐서 읽는다. 쓰지 않을 항목은 줄째 지운다(빈 항목은 보고서에 들어가지 않는다).
 두 GPU를 묶은 결론은 여기가 아니라 SeoulTech-Fiat-Lux/Meno#30 댓글에 쓴다.
 

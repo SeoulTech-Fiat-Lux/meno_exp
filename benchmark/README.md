@@ -13,7 +13,7 @@ run.py           bench_app을 Release로 빌드하고 (대상, N, 반복)마다 
 summarize.py     평균·p50·p99 표(summary.*)
 figures.py       그림 4장과 그 값 표(figures/)
 tracy.py         Tracy 캡처와 구간별 비용 표·그림(tracy/)
-report.py        결과 폴더들을 모아 최종 보고서(results/report.md)
+report.py        결과 폴더들을 모아 보고서 초안(results/report-draft.md). 최종본은 사람이 다듬는다
 common.py        공용: bench.toml 읽기, 실행 명령 틀, 측정하는 meno 커밋
 probe.py         공용(실행 도구): GL 렌더러, git 버전, CPU·전원 상태 조사
 build.py         공용(실행 도구): 빌드와 meno 커밋 확인
@@ -107,7 +107,7 @@ GPU가 더 있으면 2-1부터 다시 한다(`MESA_D3D12_DEFAULT_ADAPTER_NAME=Ra
 
 ### 3. 보고서를 만든다
 
-2에서 만든 결과 폴더를 모두 준다. `results/report.md`가 생긴다.
+**3-1. 초안을 만든다.** 2에서 만든 결과 폴더를 모두 준다(`<폴더>` 자리에 실제 이름을 쓴다). `results/report-draft.md`가 생긴다.
 
 ```bash
 ls -d results/*/
@@ -117,8 +117,16 @@ ls -d results/*/
 python3 report.py results/<폴더 1> results/<폴더 2>
 ```
 
-- 경고가 나오면 보고서 맨 위에도 붙는다. 원인을 고치고 그 GPU를 다시 잰다(새 `--out` 폴더로).
-- 요약의 문장과 판정은 결과 파일에서 계산한다. 보고서를 손으로 고치지 않고, 다시 만든다.
+경고가 나오면 초안 맨 위에도 붙는다. 원인을 고치고 그 GPU를 다시 잰다(새 `--out` 폴더로).
+
+**3-2. 초안을 다듬어 최종본으로 저장한다.** 숫자와 표는 그대로 두고, 문장을 다듬어 `results/report.md`로 저장한다.
+
+```bash
+cp results/report-draft.md results/report.md
+```
+
+- 초안은 커밋하지 않는다(`.gitignore`). `report.py`는 최종본을 덮어쓰지 않는다.
+- 결과를 다시 쟀다면 초안을 새로 만들고, 바뀐 숫자를 최종본에 옮긴다.
 
 ### 4. 원자료를 보관하고 커밋한다
 
@@ -141,7 +149,7 @@ python3 run.py --mock --reps 2 && python3 summarize.py results-mock/*-mock && py
 ```
 
 ```bash
-python3 tracy.py capture --mock --out results-mock/$(date +%Y%m%d)-mock/tracy && python3 report.py results-mock/*-mock --out results-mock/report.md
+python3 tracy.py capture --mock --out results-mock/$(date +%Y%m%d)-mock/tracy && python3 report.py results-mock/*-mock --out results-mock/report-draft.md
 ```
 
 ### 문제 해결
@@ -189,6 +197,6 @@ meno_bench --target <대상> --count N --warmup W --frames F --out <경로.csv> 
 
 ### 결과 폴더에서 커밋하는 것
 
-- 커밋: `env.json`, `vsync.json`, `runs.jsonl`, `summary.*`, `figures/`, `tracy/zones.*`, `tracy/notes.md`, 그리고 `results/report.md`.
+- 커밋: `env.json`, `vsync.json`, `runs.jsonl`, `summary.*`, `figures/`, `tracy/zones.*`, `tracy/notes.md`, 그리고 `results/report.md`(최종본). `results/report-draft.md`(초안)는 커밋하지 않는다.
 - git 밖: `raw/`, `tracy/*.tracy`, `tracy/zones-*.csv`, `tracy/frames-*.csv`, `*-raw.tar.gz`.
 - 원자료를 풀려면 결과 폴더 안에서 `tar xzf ../<결과 폴더>-raw.tar.gz`. `summarize.py`, `figures.py`, `tracy.py report`는 원자료가 있어야 다시 돌릴 수 있다. `report.py`는 커밋된 파일만으로 돈다.

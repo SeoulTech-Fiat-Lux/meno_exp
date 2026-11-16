@@ -1,6 +1,6 @@
 # Tracy 병목 분석 노트 (D3D12 (AMD Radeon(TM) Graphics))
 
-숫자는 zones.md(비율·증가량)와 ../summary.md(프레임 시간)에서 옮긴다. Tracy를 켜면 프레임이 느려지므로 zones.md의 ms는 그대로 쓰지 않는다.
+숫자는 zones.md(비율·증가량)와 summary.md(프레임 시간)에서 옮긴다. Tracy를 켜면 프레임이 느려지므로 zones.md의 ms는 그대로 쓰지 않는다.
 `scene.draw`와 `window.display`는 합쳐서 읽는다. 쓰지 않을 항목은 줄째 지운다(빈 항목은 보고서에 들어가지 않는다).
 두 GPU를 묶은 결론은 여기가 아니라 SeoulTech-Fiat-Lux/Meno#30 댓글에 쓴다.
 
@@ -8,7 +8,7 @@
 
 - 가장 비싼 구간: N=10,000에서 가장 큰 비중을 차지하는 구간은 `window.display`(61%)이며, `scene.draw`(36%)가 그 뒤를 잇는다. 두 구간을 합하면 프레임 시간의 97%에 이른다.
 - N에 비례해 느는 구간: N을 1,000에서 10,000으로 늘렸을 때 증가한 시간은 `scene.draw`(50%)와 `window.display`(49%)에 거의 절반씩 나뉘며, 두 구간의 합이 증가분의 99%를 차지한다. 스프라이트 하나당 증가분은 약 0.7 µs로, Tracy 없이 측정한 `sfml`의 증가분(약 0.79 µs)과 비슷하다.
-- 고정 비용 구간: `renderer.begin`과 `app.events`는 N과 관계없이 거의 일정하다. 화면을 넘기는 고정 비용은 약 1.8 ms로, RTX 5070 Ti(약 1.3 ms)보다 크다(../summary.md의 N≤400 `sfml-batched` 기준).
+- 고정 비용 구간: `renderer.begin`과 `app.events`는 N과 관계없이 거의 일정하다. 화면을 넘기는 고정 비용은 약 1.8 ms로, RTX 5070 Ti(약 1.3 ms)보다 크다(summary.md의 N≤400 `sfml-batched` 기준).
 - 이 GPU에서 다른 점: 그리기 비용의 절반이 `window.display`에서 발생한다. 드라이버가 그리기 명령을 모아 두었다가 화면을 넘길 때 한꺼번에 처리하는 것으로 보인다. 따라서 `window.display`만 보면 화면 전환이 병목인 것처럼 보이지만, 실제로는 그리기 호출의 비용이다. 한편 Tracy를 켰을 때 프레임이 느려지는 정도는 3%로, RTX 5070 Ti(29%)보다 훨씬 작다.
 
 ## 판단

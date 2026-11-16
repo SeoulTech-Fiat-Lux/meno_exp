@@ -94,7 +94,7 @@ def main() -> None:
             row = [str(n), *(cell(t, n, k) for t in targets), *(ratio(a, b, n, k) for a, b in pairs)]
             lines.append("| " + " | ".join(row) + " |")
         lines.append("")
-    lines.append("값은 반복 사이의 중앙값이다. 반복별 범위는 summary.csv의 *_min, *_max.")
+    lines.append("값은 반복 사이의 중앙값이다. 반복별 범위는 `summary.csv`의 `*_min`, `*_max` 열에 있다.")
     if failed:
         lines.append(f"\n실패해 빠진 (대상, N, 반복): {sorted(failed)}")
     (out / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
