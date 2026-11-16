@@ -1,6 +1,6 @@
 # 성능 측정 (SeoulTech-Fiat-Lux/Meno#30)
 
-스프라이트 N개의 프레임 시간을 meno와 SFML 직접 사용으로 나눠 잰다. 배칭 적용 여부의 근거다. #29 D4의 "적 200·400마리"도 여기서 잰다.
+스프라이트 N개의 프레임 시간을 meno와 SFML 직접 사용으로 나눠 잰다. 배칭 적용 여부의 근거다.
 
 - 최종 보고서: [results/report.md](results/report.md)
 - meno 동결 커밋 `46f8934`와 SFML 3.1.0(`8835b6b`)을 FetchContent로 받아 공개 API로만 잰다. Meno 저장소는 고치지 않는다.

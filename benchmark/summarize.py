@@ -7,6 +7,7 @@ raw/의 프레임 시간 CSV를 (대상, N, 반복)마다 평균·p50·p99로 �
   summary.csv   (대상, N)마다 통계. figures.py, report.py가 읽는다
   summary.md    사람이 읽는 표
   summary.json  판정 결과(대상 순서, 수직 동기화에 묶인 대상, 실패한 측정). report.py가 경고를 낼 때 읽는다
+  reps.csv      (대상, N, 반복)마다 평균 프레임 시간. report.py가 비율의 신뢰구간을 낼 때 읽는다(원자료 없이)
 그림은 figures.py가 그린다.
 """
 from __future__ import annotations
@@ -39,9 +40,11 @@ def main() -> None:
 
     cells: dict[tuple, list[dict]] = defaultdict(list)
     near_refresh: dict[tuple, set] = defaultdict(set)
+    rep_means = []
     for target, count, rep in sorted(ok):
         r = per_run(raw_path(out, target, count, rep))
         cells[target, count].append(r)
+        rep_means.append({"target": target, "count": count, "rep": rep, "mean_ms": round(r["mean"], 4)})
         # 프레임이 한 주사율 주기에 촘촘히 모인 측정을 모은다(vsync_check.py와 같은 기준).
         hz, is_locked = locked(r["p50"], r["p10"])
         if is_locked:
@@ -65,6 +68,10 @@ def main() -> None:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows({k: round(v, 4) if isinstance(v, float) else v for k, v in row.items()} for row in rows)
+    with (out / "reps.csv").open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["target", "count", "rep", "mean_ms"])
+        w.writeheader()
+        w.writerows(rep_means)
 
     by = {(r["target"], r["count"]): r for r in rows}
     counts = sorted({r["count"] for r in rows})

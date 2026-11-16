@@ -14,7 +14,9 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import random
 import re
+import statistics
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +34,12 @@ OTHER_CORES_LIMIT = 1.5
 HOST_LOAD_LIMIT = 30.0
 # GPU를 바꿔도 배칭하지 않은 비용이 이 비율 안에서만 달라지면 "CPU가 정한다"고 판정한다(아래 cross_gpu).
 SAME_COST = 0.15
+# meno가 비용을 더하는가의 판정(비열등성). 비율의 95% 신뢰구간 상한이 1 + EQUIV_MARGIN 이하여야 한다.
+# ±5%는 N = 10,000(약 10 ms)에서 0.5 ms, 60 fps 예산의 3%로, 게임에서 체감되지 않는 크기로 잡았다.
+EQUIV_MARGIN = 0.05
+EQUIV_MIN_N = 1000  # 이보다 작은 N은 화면 전환의 고정 비용이 프레임 대부분이라 흔들림이 크다
+MENO_STAGES = [("meno-renderer", "sfml"), ("meno-object", "meno-renderer")]
+BOOTSTRAP = 10_000
 
 
 @dataclass
@@ -45,6 +53,7 @@ class Folder:
     rows: dict = field(default_factory=dict)   # (대상, N) → summary.csv 한 줄
     zones: dict = field(default_factory=dict)  # tracy/zones.json
     notes: str = ""
+    reps: dict = field(default_factory=dict)   # (대상, N) → {반복 번호: 평균 프레임 시간}(reps.csv)
 
     @property
     def gpu(self) -> str:
@@ -78,6 +87,10 @@ def load(out: Path) -> Folder:
         f.zones = {"counts": z["counts"], "frame_ms": {int(k): v for k, v in z["frame_ms"].items()},
                    "zones": {name: {int(k): v for k, v in by.items()} for name, by in z["zones"].items()}}
     f.notes = filled_notes(read(out / "tracy" / "notes.md"))
+    if (out / "reps.csv").exists():
+        with (out / "reps.csv").open(newline="", encoding="utf-8") as fh:
+            for r in csv.DictReader(fh):
+                f.reps.setdefault((r["target"], int(r["count"])), {})[int(r["rep"])] = float(r["mean_ms"])
     return f
 
 
@@ -149,9 +162,57 @@ def ratio_range(folders: list[Folder], a: str, b: str) -> str:
     return f"{min(xs):.2f}-{max(xs):.2f}" if xs else "-"
 
 
+def bootstrap_ci(a: dict[int, float], b: dict[int, float], seed: int) -> tuple[float, float]:
+    """평균(a)/평균(b)의 95% 부트스트랩 신뢰구간(백분위수). 같은 반복 번호의 측정은 같은 바퀴에서 순서를 섞어
+    돌렸으므로 짝지어 다시 뽑는다(그 사이 PC 상태가 흘러간 몫을 상쇄한다). 시드를 고정해 늘 같은 값이 나온다."""
+    reps = sorted(a.keys() & b.keys())
+    rng = random.Random(seed)
+    stats = []
+    for _ in range(BOOTSTRAP):
+        pick = rng.choices(reps, k=len(reps))
+        stats.append(statistics.fmean(a[r] for r in pick) / statistics.fmean(b[r] for r in pick))
+    stats.sort()
+    return stats[int(0.025 * BOOTSTRAP)], stats[int(0.975 * BOOTSTRAP) - 1]
+
+
+def meno_cis(folders: list[Folder]) -> list[tuple[str, int, str, float, float]]:
+    """N ≥ EQUIV_MIN_N인 칸마다 meno 단계 비율의 95% 신뢰구간. (GPU, N, 비율 이름, 하한, 상한)."""
+    out = []
+    for f in folders:
+        for n in f.counts:
+            if n < EQUIV_MIN_N:
+                continue
+            for k, (a, b) in enumerate(MENO_STAGES):
+                xa, xb = f.reps.get((a, n)), f.reps.get((b, n))
+                if xa and xb and len(xa.keys() & xb.keys()) >= 2:
+                    out.append((f.gpu, n, f"{a}/{b}", *bootstrap_ci(xa, xb, seed=n * 10 + k)))
+    return out
+
+
+def equivalence_sentence(folders: list[Folder]) -> str:
+    """meno가 비용을 더하는가에 대한 판정. 묻는 것이 "더하는가"이므로 신뢰구간의 상한만 본다(비열등성 판정):
+    모든 비교에서 상한이 1 + EQUIV_MARGIN 이하여야 "더하는 비용이 그보다 작다"고 쓴다."""
+    cis = meno_cis(folders)
+    if not cis:
+        return "반복별 기록(reps.csv)이 없어 신뢰구간을 구하지 못했다."
+    hi = max(c[4] for c in cis)
+    head = f"N ≥ {EQUIV_MIN_N:,}의 {len(cis)}개 비교에서 95% 신뢰구간의 상한은 모두 {hi:.2f} 이하다. "
+    over = [c for c in cis if c[4] > 1 + EQUIV_MARGIN]
+    if over:
+        return f"N ≥ {EQUIV_MIN_N:,}의 {len(cis)}개 비교 중 {len(over)}개는 95% 신뢰구간의 상한이 허용 범위" \
+               f"(+{100 * EQUIV_MARGIN:.0f}%)를 넘어, meno가 비용을 더하지 않는다고 단정할 수 없다."
+    text = head + f"따라서 meno가 더하는 비용은 모든 비교에서 {100 * EQUIV_MARGIN:.0f}% 미만이다."
+    faster = [c for c in cis if c[4] < 1]
+    if faster:
+        text += (f" 다만 {len(faster)}개 비교는 신뢰구간 전체가 1.00보다 작아 meno 쪽이 빨랐다"
+                 f"(가장 작은 하한 {min(c[3] for c in faster):.2f}). 원인은 확인하지 않았으며, 비용을 더하지 않는다는 "
+                 "결론에는 영향이 없다.")
+    return text
+
+
 def rep_spread(folders: list[Folder], big_n: int = 1000) -> tuple[float | None, float | None]:
     """같은 (대상, N)을 반복 측정했을 때 평균 프레임 시간이 흔들린 폭((최댓값 − 최솟값) / 중앙값).
-    (모든 칸의 중앙값, N ≥ big_n인 칸의 최댓값). 비율이 1.00에서 이만큼 벗어나는 것은 측정 오차로 본다."""
+    (모든 칸의 중앙값, N ≥ big_n인 칸의 최댓값)."""
     def spread(r: dict) -> float:
         return (float(r["mean_max"]) - float(r["mean_min"])) / float(r["mean_ms"])
 
@@ -169,8 +230,13 @@ def spread_note(folders: list[Folder]) -> list[str]:
     if typical is None:
         return []
     tail = f"(N ≥ 1,000에서 최대 {100 * big:.0f}%)" if big is not None else ""
-    return [f"- 같은 조건을 반복 측정한 평균 프레임 시간은 보통 약 {100 * typical:.0f}% 범위에서 흔들렸다{tail}. "
-            "따라서 이보다 작은 차이는 측정 오차로 본다."]
+    return [f"- 같은 조건을 반복 측정한 평균 프레임 시간은 보통 약 {100 * typical:.0f}% 범위에서 흔들렸다{tail}.",
+            f"- meno가 더하는 비용은 반복 {folders[0].env.get('config', {}).get('sweep', {}).get('reps', '-')}회의 "
+            f"평균으로 비율의 95% 신뢰구간을 구해 판정했다(같은 반복 번호끼리 짝지은 부트스트랩 {BOOTSTRAP:,}번). "
+            f"신뢰구간의 상한이 허용 범위 +{100 * EQUIV_MARGIN:.0f}% 이하이면 meno가 더하는 비용이 그보다 작다고 본다. "
+            f"+{100 * EQUIV_MARGIN:.0f}%는 N = 10,000의 프레임 시간(약 10 ms)에서 0.5 ms로, "
+            "60 fps 예산(16.7 ms)의 3%에 해당한다. "
+            f"N < {EQUIV_MIN_N:,}은 화면 전환의 고정 비용 때문에 흔들림이 커서 판정에서 뺐다."]
 
 
 def cpu_name(folders: list[Folder]) -> str:
@@ -273,18 +339,9 @@ def summary(folders: list[Folder]) -> list[str]:
     if all(f.mean("sfml", n) and f.mean("sfml-batched", n) for f in folders):
         lines.append(f"- **배칭 효과**: N = {n:,}에서 `sfml`의 프레임 시간은 `sfml-batched`의 " + ", ".join(
             f"{f.mean('sfml', n) / f.mean('sfml-batched', n):.2f}배({f.gpu})" for f in folders) + "이다.")
-    typical, _ = rep_spread(folders)
-    pairs = [("meno-renderer", "sfml"), ("meno-object", "meno-renderer")]
-    worst = max(abs(r - 1) for a, b in pairs for r in ratios(folders, a, b)) if typical is not None else None
-    # 비율은 두 중앙값의 비라서 각각의 흔들림이 겹친다. 보통 흔들림의 1.5배 안이면 측정 오차와 구분되지 않는다고 본다.
-    if worst is not None and worst <= 1.5 * typical:
-        reading = (f"1.00에서 벗어난 정도(최대 {100 * worst:.0f}%)는 반복 사이의 보통 흔들림(약 {100 * typical:.0f}%)과 "
-                   "같은 수준이므로, meno가 더하는 비용은 측정되지 않을 만큼 작다.")
-    else:
-        reading = "1.00보다 크면 그만큼 meno가 비용을 더한다는 뜻이다."
     lines.append(f"- **meno가 더하는 비용**: 모든 GPU와 N에서 `meno-renderer`/`sfml`은 "
                  f"{ratio_range(folders, 'meno-renderer', 'sfml')}, `meno-object`/`meno-renderer`는 "
-                 f"{ratio_range(folders, 'meno-object', 'meno-renderer')}이다. {reading}")
+                 f"{ratio_range(folders, 'meno-object', 'meno-renderer')}이다. {equivalence_sentence(folders)}")
     lines.append(f"- **60 fps 예산**(p99 16.7 ms 이하): 이 PC({cpu_name(folders)})에서는 " + budget(folders))
     lines += cross_gpu(folders, n)
     tracy = []
@@ -409,7 +466,9 @@ def main() -> None:
             *(["- WSL2(WSLg)에서 측정했으므로 Windows 화면 합성을 거치며, OpenGL 호출을 Direct3D 12로 변환하는 비용이 "
                "CPU에 더해진다."] if any(f.env.get("wsl") for f in folders) else []),
             f"- CPU는 {cpu_name(folders)} 한 종류만 사용했으므로, "
-            "느린 CPU에서의 수치는 얻지 못했다.", ""]
+            "느린 CPU에서의 수치는 얻지 못했다.",
+            f"- meno 비용의 허용 범위(+{100 * EQUIV_MARGIN:.0f}%)는 측정 결과를 본 뒤에 정했다. 근거는 결과가 아니라 "
+            "60 fps 예산에 대한 크기다.", ""]
     text = re.sub(r"\n{3,}", "\n\n", "\n".join(doc))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text, encoding="utf-8", newline="\n")
