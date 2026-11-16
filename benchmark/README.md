@@ -15,7 +15,10 @@ figures.py       배칭 판단용 그림 4장과 그 값 표(figures/)
 tracy.py         Tracy 캡처 도구 빌드, 캡처, 구간별 비용 표·그림(tracy/)
 vsync_check.py   수직 동기화가 정말 꺼지는지 확인 (vsync_check/ 프로그램 빌드·실행)
 report.py        결과 보고서(report/benchmark.md)
-common.py        공용: 설정, 측정 환경(렌더러·git·빌드), 결과 폴더 읽기(대상 순서 등)
+common.py        공용: bench.toml 읽기, 실행 명령 틀, 측정하는 meno 커밋 (다른 공용 모듈의 바탕)
+probe.py         공용(실행 도구): 측정 환경 조사. GL 렌더러, git 버전, CPU·전원 상태, env.json
+build.py         공용(실행 도구): bench_app·vsync_check 빌드, 받은 meno 커밋 확인
+results.py       공용(분석 도구): 결과 폴더 이름과 읽기(runs.jsonl, raw/, 대상 순서)
 stats.py         공용: 백분위, 수직 동기화 판정 (입출력 없는 계산)
 style.py         공용: 그림 색과 서식 (figures.py, tracy.py)
 results/<날짜>-<meno 커밋>-<GPU>/   결과 폴더. 요약·그림·보고서만 커밋하고 원자료는 git 밖에 둔다 ("결과 폴더에서 커밋하는 것")
@@ -71,14 +74,29 @@ glxinfo -B | grep -E "OpenGL renderer|Accelerated"   # D3D12 (<외장 GPU 이름
 - 그래도 llvmpipe면 `ls /dev/dxg /usr/lib/wsl/lib/libd3d12.so` 확인 → GPU 드라이버 업데이트 → `wsl --update` → `wsl --shutdown`. `LIBGL_ALWAYS_SOFTWARE`는 지운다.
 - WSLg 절대 수치는 그 환경 기준임을 보고에 적는다.
 - 측정 중: 전원 연결, 고성능 모드, 다른 프로그램 종료, 창 가리지 않기. 노트북은 `order = "interleaved"`.
-- 빌드한 meno가 고정 커밋과 다르거나, 이어서 돌릴 때 CPU·GL 렌더러·meno·bench_app이 바뀌면 실행기가 멈춘다.
+- 빌드한 meno가 고정 커밋과 다르거나, 이어서 돌릴 때 CPU·GL 렌더러·meno·bench_app·Windows 전원 설정이 바뀌면 실행기가 멈춘다.
+
+### CPU 상태 기록
+
+그리기 호출을 하나씩 보내는 비용은 CPU가 정한다. WSL 안에서는 CPU 클럭을 정하는 Windows 전원 설정도, Windows 프로그램이 쓰는 CPU도 보이지 않으므로(`cpu_governor`가 빈다) 실행기가 Windows에 직접 묻는다.
+
+| 기록 | 위치 | 경고 (report.py) |
+|---|---|---|
+| 전원 계획, 전원 모드, 최대·최소 프로세서 상태(%) | `env.json`의 `windows_power` | 최대 프로세서 상태가 100% 미만 |
+| 측정 직전 1초의 Windows 전체 CPU 사용률(%) | `runs.jsonl`의 `host_cpu_pct` | 30% 초과 |
+| 측정 중 CPU 사용(코어 수): 측정 프로그램 `self_cores`, WSL 안의 나머지 `other_cores` | `runs.jsonl`의 `cpu` | `other_cores` 1.5 초과 |
+
+- 보고서 측정 환경 표의 "CPU 상태" 칸에 요약한다. 기록이 없는 옛 결과 폴더는 "기록 없음"이다.
+- `other_cores`는 쉴 때 0이지만, 측정 중에는 WSLg가 창을 합성하는 몫으로 0.3~0.6코어가 늘 잡힌다. 경고는 그 위로 병렬 빌드처럼 코어를 여럿 쓰는 작업이 겹칠 때만 낸다.
+- Windows 사용률은 측정 사이에 묻는다(측정 중에 물으면 그 질의가 CPU를 쓴다). 한 번에 약 1초라 측정 140회에 2분 남짓 늘어난다.
+- CPU 비교 측정: Windows 제어판 > 전원 옵션 > 고급 설정 > 프로세서 전원 관리 > 최대 프로세서 상태를 낮춰 잰다. 값이 `windows_power`에 남으므로 결과 폴더를 따로 둔다(`--out`).
 
 ### 수직 동기화 확인
 
 본 측정 전, 같은 셸 환경으로 한 번 돌린다. 동기화가 강제되면 프레임 시간이 16.7ms(60Hz)에 묶여 측정이 무효다.
 
 ```bash
-python3 vsync_check.py --out results/<날짜>-<meno 커밋>   # 처음엔 SFML 빌드로 1분 남짓. 실패하면 종료 코드 1
+python3 vsync_check.py --out results/<날짜>-<meno 커밋>-<GPU>   # 처음엔 SFML 빌드로 1분 남짓. 실패하면 종료 코드 1
 ```
 
 - 실패 기준: vsync 끔의 중앙값이 주사율 주기의 2% 안이고 p10도 3% 안.
@@ -102,11 +120,11 @@ python3 run.py                      # bench_app Release 빌드 후 측정. 결�
 ```
 
 ```bash
-pip install -r requirements.txt && python3 summarize.py results/<날짜>-<meno 커밋>
+pip install -r requirements.txt && python3 summarize.py results/<날짜>-<meno 커밋>-<GPU>
 ```
 
 ```bash
-python3 figures.py results/<날짜>-<meno 커밋>     # summarize.py 다음에
+python3 figures.py results/<날짜>-<meno 커밋>-<GPU>     # summarize.py 다음에
 ```
 
 - 측정 전 대상마다 10프레임 사전 점검을 하고, 실패하면 멈춘다.
@@ -141,7 +159,7 @@ python3 tracy.py capture --mock           # Tracy 없이 보고서 흐름 점검
 ## 결과 보고서 (report.py)
 
 ```bash
-python3 report.py results/<날짜>-<meno 커밋>   # summarize.py, figures.py, tracy.py, vsync_check.py 다음에
+python3 report.py results/<날짜>-<meno 커밋>-<GPU>   # summarize.py, figures.py, tracy.py, vsync_check.py 다음에
 ```
 
 - `report/benchmark.md`(보고서)를 만든다.

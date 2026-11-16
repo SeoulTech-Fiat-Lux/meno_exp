@@ -4,7 +4,8 @@
 
 결과 폴더의 figures/에 쓴다.
   1-budget.png        N에 따른 프레임 시간(평균, p99)과 60·30 fps 예산선. 예산을 넘는 N을 표시한다
-  2-stages.png        meno-object 프레임 시간을 SFML 기본 / Renderer 단계 / 객체 단계로 나눈 비율
+  2-stages.png        마지막 대상(meno-object)의 프레임 시간을 대상 순서대로 쌓은 단계 비율
+                      (배칭한 SFML 기준 → 스프라이트마다 draw → Renderer → 객체)
   3-per-sprite.png    스프라이트 하나당 평균 비용(μs). 평평하면 개수에 비례하는 비용이 주도한다
   4-distribution.png  큰 N 두 개에서의 프레임 시간 누적 분포. p99가 높은 원인이 튀는 프레임인지 전반적인 느림인지 본다
   figures.md          그림에서 읽을 값(예산을 넘는 N, 단계 비율)을 정리한 표. 그림을 볼 수 없는 사람을 위한 것이다
@@ -26,7 +27,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter  # noqa: E402
 
 import style  # noqa: E402
-from common import ok_runs, raw_path, read_frame_ms, read_runs, target_order  # noqa: E402
+from results import ok_runs, raw_path, read_frame_ms, read_runs, require_raw, target_order  # noqa: E402
 from stats import percentile  # noqa: E402
 from style import INK, INK_2, SURFACE  # noqa: E402
 
@@ -71,7 +72,7 @@ def crossing(counts: list[int], values: list[float], limit: float) -> float | No
     return None
 
 
-def end_labels(ax, xs_by_target: dict, ys_by_target: dict, colors: dict, fmt=lambda t: t) -> None:
+def end_labels(ax, xs_by_target: dict, ys_by_target: dict) -> None:
     """선 끝에 대상 이름을 직접 붙인다. 겹치면 위아래로 벌린다(로그 축 기준)."""
     ends = sorted(((ys_by_target[t][-1], t) for t in ys_by_target), key=lambda p: p[0])
     log = ax.get_yscale() == "log"
@@ -82,7 +83,7 @@ def end_labels(ax, xs_by_target: dict, ys_by_target: dict, colors: dict, fmt=lam
         if placed and pos - placed[-1] < span * 0.05:
             pos = placed[-1] + span * 0.05
         placed.append(pos)
-        ax.annotate(fmt(t), (xs_by_target[t][-1], 10 ** pos if log else pos), xytext=(6, 0),
+        ax.annotate(t, (xs_by_target[t][-1], 10 ** pos if log else pos), xytext=(6, 0),
                     textcoords="offset points", va="center", color=INK, fontsize=9)
 
 
@@ -112,7 +113,7 @@ def fig_budget(out: Path, targets, counts, by, colors, notes: list[str]) -> None
         lo = min(min(v) for v in ys.values())
         ax.set_ylim(lo / 1.5, max(max(max(v) for v in ys.values()), BUDGETS[-1][0]) * 1.6)
         ax.set_xlim(counts[0] / 1.3, counts[-1] * 2.6)
-        end_labels(ax, xs, ys, colors)
+        end_labels(ax, xs, ys)
         plain_ticks(ax)
     axes[0].set_ylabel("ms per frame (log)")
     handles, labels = axes[0].get_legend_handles_labels()
@@ -182,7 +183,7 @@ def fig_per_sprite(out: Path, targets, counts, by, colors, notes: list[str]) -> 
     ax.set(xscale="log", yscale="log", xlabel="sprites (N)", ylabel="μs per sprite (mean frame time / N, log)",
            title="Cost per sprite: flat = per-sprite work dominates, falling = fixed cost dominates")
     ax.set_xlim(counts[0] / 1.3, counts[-1] * 2.6)
-    end_labels(ax, xs, ys, colors)
+    end_labels(ax, xs, ys)
     plain_ticks(ax)
     ax.legend(loc="upper right")
     fig.tight_layout()
@@ -234,9 +235,7 @@ def fig_distribution(out: Path, targets, counts, colors, notes: list[str]) -> No
 
 def main() -> None:
     out = Path(sys.argv[1])
-    if not (out / "raw").is_dir():
-        # 원자료는 git 밖에 보관한다. 없을 때 돌리면 커밋된 결과를 빈 값으로 덮어쓰므로 멈춘다.
-        sys.exit(f"{out / 'raw'}가 없다. 원자료를 풀어 둔 뒤 돌린다(README의 \"원자료 보관\")")
+    require_raw(out)
     style.apply(plt)
     targets, counts, by = load(out)
     colors = style.target_colors(targets)

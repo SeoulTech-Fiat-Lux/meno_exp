@@ -9,7 +9,7 @@ jobs = 4
 [sweep]
 # 200·400은 D4에서 넘겨받은 "적 200·400마리" 상황을 그대로 재려고 넣었다.
 counts = [100, 200, 400, 1000, 2000, 5000, 10000]
-# B1: SFML 직접 사용 → meno Renderer → meno GameObject·Sprite 순으로, 단계마다 비용이 얼마나 붙는지 본다.
+# SFML 직접 사용 → meno Renderer → meno GameObject·Sprite 순으로, 단계마다 비용이 얼마나 붙는지 본다.
 # 첫 대상이 기준이며, 요약 표의 비는 모두 이 대상에 대한 값이다.
 # sfml-batched(배칭 하한선)를 맨 앞에 두어 "sfml-batched → sfml"이 스프라이트마다 draw를 부르는 비용(배칭으로 줄일 수 있는 몫)이 되게 한다.
 targets = ["sfml-batched", "sfml", "meno-renderer", "meno-object"]
@@ -27,7 +27,7 @@ timeout_s = 300
 env = { vblank_mode = "0", __GL_SYNC_TO_VBLANK = "0" }
 
 [tracy]
-# 병목 분석(B3). 측정 수치와 섞지 않도록 따로 빌드하고 따로 돌린다. 자세한 약속은 README의 "Tracy 병목 분석"을 참고한다.
+# 병목 분석. 측정 수치와 섞지 않도록 따로 빌드하고 따로 돌린다. 자세한 약속은 README의 "Tracy 병목 분석"을 참고한다.
 # Tracy는 계측되는 쪽(bench_app/CMakeLists.txt의 FetchContent)과 캡처 도구의 버전이 같아야 연결된다.
 version = "v0.15.0"
 repo = "https://github.com/wolfpld/tracy.git"

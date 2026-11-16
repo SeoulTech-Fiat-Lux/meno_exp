@@ -23,17 +23,19 @@
 #include <SFML/Graphics.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 #ifdef BENCH_ENABLE_TRACY
@@ -168,18 +170,13 @@ void saveScreenshot(const sf::RenderWindow& window, const std::string& path) {
     if (!shot.copyToImage().saveToFile(path)) std::fprintf(stderr, "화면을 저장하지 못했다: %s\n", path.c_str());
 }
 
-int runSfml(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& screenshot) {
-    sf::RenderWindow window(sf::VideoMode({kWidth, kHeight}), "meno_bench sfml");
+// 두 SFML 대상이 같은 순서, 같은 구간으로 재도록 프레임 루프는 하나만 둔다. 대상마다 다른 것은 몸체의 위치를
+// 그릴 것에 옮기는 apply와 그것을 그리는 draw뿐이다. 둘 다 람다로 받아 인라인되므로 호출 비용이 더해지지 않는다.
+template <class Apply, class Draw>
+int runSfmlLoop(sf::RenderWindow& window, std::vector<Body>& bodies, FrameRecorder& rec, const std::string& screenshot,
+                Apply apply, Draw draw) {
     window.setFramerateLimit(0);
     window.setVerticalSyncEnabled(false);
-
-    sf::Texture texture({kTexture, kTexture});
-    texture.update(texturePixels().data());
-    std::vector<sf::Sprite> sprites(bodies.size(), sf::Sprite(texture));
-    for (auto& s : sprites) {
-        s.setOrigin({kHalf, kHalf});
-    }
-
     while (window.isOpen() && !rec.done()) {
         BENCH_ZONE("frame");
         {
@@ -194,10 +191,7 @@ int runSfml(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& sc
             rec.countUpdate();
             {
                 BENCH_ZONE("bench.apply");  // 한 블록에 구간은 하나만 열 수 있다(Tracy 매크로가 같은 변수 이름을 씀)
-                for (std::size_t i = 0; i < bodies.size(); ++i) {
-                    sprites[i].setPosition({bodies[i].x, bodies[i].y});
-                    sprites[i].setRotation(sf::degrees(bodies[i].angle));
-                }
+                apply();
             }
         }
         {
@@ -206,7 +200,7 @@ int runSfml(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& sc
         }
         {
             BENCH_ZONE("scene.draw");
-            for (const auto& s : sprites) window.draw(s);
+            draw();
         }
         {
             BENCH_ZONE("window.display");
@@ -218,14 +212,33 @@ int runSfml(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& sc
     return rec.done() ? 0 : 1;
 }
 
+// 스프라이트마다 draw. 창을 먼저 만든다(텍스처를 만들려면 GL 문맥이 있어야 함).
+int runSfml(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& screenshot) {
+    sf::RenderWindow window(sf::VideoMode({kWidth, kHeight}), "meno_bench sfml");
+    sf::Texture texture({kTexture, kTexture});
+    texture.update(texturePixels().data());
+    std::vector<sf::Sprite> sprites(bodies.size(), sf::Sprite(texture));
+    for (auto& s : sprites) {
+        s.setOrigin({kHalf, kHalf});
+    }
+    return runSfmlLoop(
+        window, bodies, rec, screenshot,
+        [&] {
+            for (std::size_t i = 0; i < bodies.size(); ++i) {
+                sprites[i].setPosition({bodies[i].x, bodies[i].y});
+                sprites[i].setRotation(sf::degrees(bodies[i].angle));
+            }
+        },
+        [&] {
+            for (const auto& s : sprites) window.draw(s);
+        });
+}
+
 // 배칭: 스프라이트마다 draw를 부르는 대신, 회전한 사각형 N개의 꼭짓점(삼각형 2개 = 6개)을 CPU에서 계산해
 // VertexArray 하나에 넣고 draw를 한 번 부른다. 텍스처가 하나라 상태 전환이 없다. sf::Sprite와 같은 그림이 나온다
 // (기준점은 텍스처 중심, 회전은 시계 방향 도 단위).
 int runSfmlBatched(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& screenshot) {
     sf::RenderWindow window(sf::VideoMode({kWidth, kHeight}), "meno_bench sfml-batched");
-    window.setFramerateLimit(0);
-    window.setVerticalSyncEnabled(false);
-
     sf::Texture texture({kTexture, kTexture});
     texture.update(texturePixels().data());
     sf::VertexArray vertices(sf::PrimitiveType::Triangles, bodies.size() * 6);
@@ -237,48 +250,21 @@ int runSfmlBatched(std::vector<Body>& bodies, FrameRecorder& rec, const std::str
     const sf::Vector2f uv[4] = {{0.f, 0.f}, {t, 0.f}, {t, t}, {0.f, t}};
     constexpr int order[6] = {0, 1, 2, 0, 2, 3};
 
-    while (window.isOpen() && !rec.done()) {
-        BENCH_ZONE("frame");
-        {
-            BENCH_ZONE("app.events");
-            while (const auto event = window.pollEvent()) {
-                if (event->is<sf::Event::Closed>()) window.close();
-            }
-        }
-        {
-            BENCH_ZONE("app.update");
-            step(bodies);
-            rec.countUpdate();
-            {
-                BENCH_ZONE("bench.apply");
-                for (std::size_t i = 0; i < bodies.size(); ++i) {
-                    const float radians = bodies[i].angle * 3.14159265358979f / 180.f;
-                    const float c = std::cos(radians), sn = std::sin(radians);
-                    for (int k = 0; k < 6; ++k) {
-                        const sf::Vector2f p = corner[order[k]];
-                        sf::Vertex& v = vertices[i * 6 + static_cast<std::size_t>(k)];
-                        v.position = {bodies[i].x + p.x * c - p.y * sn, bodies[i].y + p.x * sn + p.y * c};
-                        v.texCoords = uv[order[k]];
-                    }
+    return runSfmlLoop(
+        window, bodies, rec, screenshot,
+        [&] {
+            for (std::size_t i = 0; i < bodies.size(); ++i) {
+                const float radians = bodies[i].angle * 3.14159265358979f / 180.f;
+                const float c = std::cos(radians), sn = std::sin(radians);
+                for (int k = 0; k < 6; ++k) {
+                    const sf::Vector2f p = corner[order[k]];
+                    sf::Vertex& v = vertices[i * 6 + static_cast<std::size_t>(k)];
+                    v.position = {bodies[i].x + p.x * c - p.y * sn, bodies[i].y + p.x * sn + p.y * c};
+                    v.texCoords = uv[order[k]];
                 }
             }
-        }
-        {
-            BENCH_ZONE("renderer.begin");
-            window.clear();
-        }
-        {
-            BENCH_ZONE("scene.draw");
-            window.draw(vertices, states);
-        }
-        {
-            BENCH_ZONE("window.display");
-            window.display();
-        }
-        BENCH_FRAME();
-        if (rec.tick()) saveScreenshot(window, screenshot);
-    }
-    return rec.done() ? 0 : 1;
+        },
+        [&] { window.draw(vertices, states); });
 }
 
 // --- 대상: meno ---------------------------------------------------------------
@@ -382,23 +368,36 @@ int runMeno(const Options& o, std::vector<Body>& bodies, FrameRecorder& rec, boo
 
 // --- 인자 ---------------------------------------------------------------------
 
+constexpr std::string_view kTargets[] = {"sfml-batched", "sfml", "meno-renderer", "meno-object"};
+
+// 문자열 전체가 숫자일 때만 받는다. atoi처럼 "10k"를 10으로 읽고 넘어가지 않게 한다.
+template <class T>
+bool readNumber(const std::string& text, T& out) {
+    const auto [end, err] = std::from_chars(text.data(), text.data() + text.size(), out);
+    return err == std::errc{} && end == text.data() + text.size();
+}
+
 std::optional<Options> parse(int argc, char** argv) {
+    if (argc % 2 == 0) return std::nullopt;  // "--키 값" 쌍이 아니다(값이 빠진 키가 있음)
     Options o;
     for (int i = 1; i + 1 < argc; i += 2) {
         const std::string_view key = argv[i];
         const std::string value = argv[i + 1];
+        bool ok = true;
         if (key == "--target") o.target = value;
-        else if (key == "--count") o.count = std::atoi(value.c_str());
-        else if (key == "--warmup") o.warmup = std::atoi(value.c_str());
-        else if (key == "--frames") o.frames = std::atoi(value.c_str());
+        else if (key == "--count") ok = readNumber(value, o.count);
+        else if (key == "--warmup") ok = readNumber(value, o.warmup);
+        else if (key == "--frames") ok = readNumber(value, o.frames);
         else if (key == "--out") o.out = value;
-        else if (key == "--seed") o.seed = static_cast<std::uint32_t>(std::strtoul(value.c_str(), nullptr, 10));
-        else if (key == "--loop") o.directLoop = value == "direct";
-        else if (key == "--screenshot") o.screenshot = value;
-        else return std::nullopt;
+        else if (key == "--seed") ok = readNumber(value, o.seed);
+        else if (key == "--loop") {
+            ok = value == "run" || value == "direct";
+            o.directLoop = value == "direct";
+        } else if (key == "--screenshot") o.screenshot = value;
+        else ok = false;
+        if (!ok) return std::nullopt;
     }
-    const bool known = o.target == "sfml-batched" || o.target == "sfml" || o.target == "meno-renderer" ||
-                       o.target == "meno-object";
+    const bool known = std::find(std::begin(kTargets), std::end(kTargets), o.target) != std::end(kTargets);
     if (!known || o.count < 1 || o.warmup < 0 || o.frames < 1 || o.out.empty()) return std::nullopt;
     return o;
 }
@@ -408,8 +407,10 @@ std::optional<Options> parse(int argc, char** argv) {
 int main(int argc, char** argv) {
     const auto options = parse(argc, argv);
     if (!options) {
-        std::fprintf(stderr, "사용: meno_bench --target sfml-batched|sfml|meno-renderer|meno-object --count N --warmup W "
-                             "--frames F --out <csv> [--seed S] [--loop run|direct]\n");
+        std::string targets;
+        for (const auto t : kTargets) targets += (targets.empty() ? "" : "|") + std::string(t);
+        std::fprintf(stderr, "사용: meno_bench --target %s --count N --warmup W --frames F --out <csv> [--seed S] "
+                             "[--loop run|direct] [--screenshot <png>]\n", targets.c_str());
         return 2;
     }
     const Options& o = *options;

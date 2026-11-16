@@ -15,43 +15,18 @@
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import json
 import math
-import os
-import platform
 import random
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-from common import (HERE, bench_versions, build_bench, check_renderer, gl_env, gl_info, load_config, raw_path,
-                    read_frame_ms, result_dir, run_env, sh)
-
-
-def environment(build_dir: Path | None, gl: dict) -> dict:
-    env = {
-        "recorded_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
-        "platform": platform.platform(),
-        "python": platform.python_version(),
-        "cpu": next((l.split(":", 1)[1].strip() for l in sh(["lscpu"]).splitlines()
-                     if l.startswith("Model name")), platform.processor()),
-        "nproc": os.cpu_count(),
-        **gl,
-        "gcc": sh(["gcc", "--version"]).splitlines()[:1],
-        "cmake": sh(["cmake", "--version"]).splitlines()[:1],
-        "wsl": "microsoft" in platform.release().lower(),
-        "display": os.environ.get("DISPLAY", ""),
-        "gl_env": gl_env(dict(os.environ)),
-        "cpu_governor": sh(["cat", "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"]),
-    }
-    env |= bench_versions(build_dir)
-    if build_dir and (build_dir / "CMakeCache.txt").exists():
-        cache = (build_dir / "CMakeCache.txt").read_text(errors="replace").splitlines()
-        env["cmake_cache"] = {l.split(":", 1)[0]: l.split("=", 1)[1] for l in cache
-                              if l.startswith(("CMAKE_BUILD_TYPE:", "CMAKE_CXX_COMPILER:", "BENCH_ENABLE_TRACY:"))}
-    return env
+from build import build_bench
+from common import HERE, bench_command, load_config, run_env
+from probe import HostLoad, cpu_snapshot, cpu_usage, environment, probe_gl
+from results import raw_path, read_frame_ms, result_dir
 
 
 def plan(sweep: dict) -> list[dict]:
@@ -90,8 +65,7 @@ def mock_frames(job: dict, frames: int) -> list[float]:
 def run_binary(binary, run_cfg: dict, proc_env: dict, job: dict, warmup: int, frames: int,
                csv_path: Path, record: dict) -> None:
     """실행 파일을 한 번 돌리고 출력 CSV를 검사한다. 실패하면 예외를 던지고, 종료 코드·stderr는 record에 남긴다."""
-    cmd = [a.format(bin=binary, target=job["target"], count=job["count"], seed=job["seed"],
-                    warmup=warmup, frames=frames, out=csv_path) for a in run_cfg["command"]]
+    cmd = bench_command(run_cfg, binary, job["target"], job["count"], job["seed"], warmup, frames, csv_path)
     p = subprocess.run(cmd, env=proc_env, capture_output=True, text=True, timeout=run_cfg["timeout_s"])
     record |= {"exit_code": p.returncode, "stderr_tail": p.stderr[-2000:]}
     if p.returncode != 0:
@@ -141,9 +115,7 @@ def main() -> None:
     # 렌더러는 결과 폴더 이름(GPU)에 쓰이며, 빌드에 몇 분을 들이기 전에 미리 확인한다.
     sweep, run_cfg = cfg["sweep"], cfg["run"]
     proc_env = run_env(cfg)
-    gl = {} if args.mock else gl_info(proc_env)
-    if not args.mock:
-        check_renderer(gl, args.allow_software)
+    gl = probe_gl(proc_env, args.mock, args.allow_software)
     out = args.out or result_dir(args.mock, gl)
     jobs = plan(cfg["sweep"])
     log_path = out / "runs.jsonl"
@@ -157,9 +129,8 @@ def main() -> None:
     print(f"결과 폴더: {out}\n전체 {len(jobs)}개, 남은 것 {len(todo)}개")
     if args.dry_run:
         for j in todo:
-            print(f"  rep {j['rep']}  {j['target']:<5} N={j['count']}")
+            print(f"  rep {j['rep']}  {j['target']:<14} N={j['count']}")
         return
-
 
     build_dir = HERE / "work" / "build"
     binary = args.bin
@@ -176,18 +147,24 @@ def main() -> None:
     env = environment(None if args.mock or args.bin else build_dir, gl)
     if env_path.exists():
         old = json.loads(env_path.read_text(encoding="utf-8"))
-        changed = [k for k in ("cpu", "gl_renderer", "meno", "bench_app") if old.get(k) != env.get(k)]
+        # windows_power는 기록이 없는 옛 결과 폴더에서는 비교하지 않는다.
+        changed = [k for k in ("cpu", "gl_renderer", "meno", "bench_app", "windows_power")
+                   if k in old and old.get(k) != env.get(k)]
         if changed:
             sys.exit(f"이전 기록과 측정 환경이 다르다: {changed}. 다른 --out을 쓴다")
     else:
         env["config"] = cfg
         env_path.write_text(json.dumps(env, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
+    host = None if args.mock else HostLoad()
     with log_path.open("a", encoding="utf-8") as log:
         for i, job in enumerate(todo, 1):
             csv_path = raw_path(out, job["target"], job["count"], job["rep"])
             record = dict(job, ok=False)
+            if host:
+                record["host_cpu_pct"] = host.sample()  # 측정 직전. 측정 중에 물으면 그 질의가 CPU를 쓴다
             start = time.monotonic()
+            before = cpu_snapshot()
             try:
                 if args.mock:
                     values = mock_frames(job, sweep["frames"])
@@ -197,6 +174,7 @@ def main() -> None:
                 else:
                     run_binary(binary, run_cfg, proc_env, job, sweep["warmup_frames"], sweep["frames"],
                                csv_path, record)
+                    record["cpu"] = cpu_usage(before, cpu_snapshot())
                 record["ok"] = True
             except RUN_ERRORS as e:
                 record["error"] = str(e)
@@ -206,6 +184,8 @@ def main() -> None:
             print(f"[{i}/{len(todo)}] rep {job['rep']} {job['target']:<14} N={job['count']:<6} "
                   f"{'OK' if record['ok'] else '실패: ' + record['error']}")
 
+    if host:
+        host.close()
     print(f"요약: python3 summarize.py {out}")
 
 

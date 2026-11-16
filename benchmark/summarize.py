@@ -18,7 +18,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from common import ok_runs, raw_path, read_frame_ms, read_runs, target_order
+from results import ok_runs, raw_path, read_frame_ms, read_runs, require_raw, target_order
 from stats import locked, percentile
 
 STATS = ("mean", "p50", "p99")
@@ -32,9 +32,7 @@ def per_run(path: Path) -> dict:
 
 def main() -> None:
     out = Path(sys.argv[1])
-    if not (out / "raw").is_dir():
-        # 원자료는 git 밖에 보관한다. 없을 때 돌리면 커밋된 결과를 빈 값으로 덮어쓰므로 멈춘다.
-        sys.exit(f"{out / 'raw'}가 없다. 원자료를 풀어 둔 뒤 돌린다(README의 \"원자료 보관\")")
+    require_raw(out)
     runs = read_runs(out)
     ok = ok_runs(runs)
     failed = {(r["target"], r["count"], r["rep"]) for r in runs if not r["ok"]} - ok

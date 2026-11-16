@@ -20,7 +20,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from common import HERE, check_renderer, cmake_build, gl_env, gl_info, load_config, run_env
+from build import cmake_build
+from common import HERE, load_config, run_env
+from probe import gl_env, probe_gl
 from stats import locked
 
 
@@ -55,8 +57,7 @@ def main() -> None:
 
     cfg = load_config(args.config)
     env = run_env(cfg)
-    gl = gl_info(env)
-    check_renderer(gl, args.allow_software)
+    gl = probe_gl(env, False, args.allow_software)
 
     build = HERE / "work" / "vsync-build"
     cmake_build(HERE / "vsync_check", build, [], cfg["build"]["jobs"], quiet=True)

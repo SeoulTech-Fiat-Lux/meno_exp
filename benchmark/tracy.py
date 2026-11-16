@@ -1,4 +1,4 @@
-"""Tracy 병목 분석 (SeoulTech-Fiat-Lux/Meno#30, B3).
+"""Tracy 병목 분석 (SeoulTech-Fiat-Lux/Meno#30).
 
 측정(run.py)과 따로, Tracy를 켠 bench_app 빌드(BENCH_ENABLE_TRACY)로 meno-object를 캡처하고 구간(zone)별
 비용을 표·그림으로 낸다. Meno 코드는 고치지 않으므로, bench_app이 Game::run()이 하는 일을 같은 순서의
@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import datetime as dt
 import os
 import random
 import subprocess
@@ -31,7 +30,10 @@ import time
 from pathlib import Path
 
 import style
-from common import HERE, build_bench, check_renderer, cmake_build, gl_info, load_config, result_dir, run_env
+from build import build_bench, cmake_build
+from common import HERE, bench_command, load_config, run_env
+from probe import probe_gl
+from results import read_json, result_dir
 
 
 def tool_dir(version: str) -> Path:
@@ -59,7 +61,7 @@ def build_tools(cfg: dict) -> Path:
     return out / "bin"
 
 
-FRAME_ZONE = "frame"  # 실행 파일이 프레임 하나를 통째로 감싸는 구간 이름 (README의 "Meno 쪽에서 맞출 것" 참고)
+FRAME_ZONE = "frame"  # bench_app이 프레임 하나를 통째로 감싸는 구간 이름 (README의 "Tracy 병목 분석")
 
 
 def export(bin_dir: Path, trace: Path, out: Path, n: int) -> None:
@@ -78,8 +80,8 @@ def capture_one(bin_dir: Path, binary: Path, run_cfg: dict, tcfg: dict, env: dic
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     time.sleep(0.5)
     csv_out = out / f".frames-{n}.csv"  # 실행 파일 약속상 필요하지만 Tracy 빌드의 수치는 쓰지 않는다
-    cmd = [a.format(bin=binary, target=tcfg["target"], count=n, seed=1, warmup=tcfg["warmup_frames"],
-                    frames=tcfg["frames"], out=csv_out) for a in run_cfg["command"]] + tcfg.get("extra_args", [])
+    cmd = bench_command(run_cfg, binary, tcfg["target"], n, 1, tcfg["warmup_frames"], tcfg["frames"],
+                        csv_out) + tcfg.get("extra_args", [])
     # TRACY_NO_EXIT=1: 프로그램이 끝나도 캡처 도구가 데이터를 다 받을 때까지 기다린다.
     p = subprocess.run(cmd, env=env | {"TRACY_NO_EXIT": "1"}, capture_output=True, text=True,
                        timeout=run_cfg["timeout_s"])
@@ -103,9 +105,8 @@ UNWRAP_HEADER = "name,src_file,src_line,ns_since_start,exec_time_ns,thread,value
 def mock_capture(tcfg: dict, out: Path, n: int) -> None:
     """Tracy 없이 보고서를 점검하려고 tracy-csvexport -u와 같은 형식의 가짜 CSV를 쓴다."""
     rng = random.Random(n)
-    per_frame_us = {"renderer.draw": 0.55 * n, "scene.render": 0.18 * n, "scene.update": 0.12 * n,
-                    "bench.move": 0.08 * n, "window.display": 300 + 0.02 * n, "input.poll": 15, "audio.update": 8,
-                    "resources.lookup": 0.01 * n}
+    per_frame_us = {"app.events": 12, "app.update": 1, "bench.move": 0.008 * n, "bench.apply": 0.005 * n,
+                    "renderer.begin": 120, "scene.draw": 1.0 * n, "window.display": 2300 + 0.15 * n}
     zones, frames, t = [UNWRAP_HEADER], [UNWRAP_HEADER], 0
     for f in range(tcfg["warmup_frames"] + tcfg["frames"] + 1):  # bench_app처럼 시작 프레임 하나를 더 돈다
         start = t
@@ -136,7 +137,7 @@ def load_capture(out: Path, n: int, warmup: int) -> tuple[float, dict[str, float
     skip = warmup + 1
     if len(frames) <= skip:
         raise ValueError(f"frames-{n}.csv에 '{FRAME_ZONE}' 구간이 {len(frames)}개뿐이다(워밍업 {warmup}개). "
-                         f"실행 파일이 프레임마다 MENO_PROFILE_SCOPE(\"{FRAME_ZONE}\")로 감싸는지 확인한다")
+                         f"Tracy를 켜고 빌드한 bench_app인지(BENCH_ENABLE_TRACY), 프레임마다 BENCH_ZONE(\"{FRAME_ZONE}\")으로 감싸는지 확인한다")
     kept = frames[skip:]
     lo, hi = kept[0][0], kept[-1][0] + kept[-1][1]
     frame_ms = sum(d for _, d in kept) / len(kept) / 1e6
@@ -251,7 +252,7 @@ def notes_template(out: Path, counts: list[int]) -> None:
 ## 캡처 조건
 
 - 날짜, 캡처한 사람:
-- 환경: `../env.json`과 같은 PC인가 (GL 렌더러):
+- 환경 (GL 렌더러는 tracy.py capture가 `../env.json`과 같은지 확인함):
 - Tracy 버전: (bench.toml `[tracy].version`과 bench_app/CMakeLists.txt의 tracy GIT_TAG가 같아야 함)
 - N: {", ".join(f"{n:,}" for n in counts)}
 
@@ -279,7 +280,7 @@ def main() -> None:
     sub.add_parser("tools", help="Tracy 캡처 도구 빌드")
     c = sub.add_parser("capture", help="캡처하고 보고서 만들기")
     c.add_argument("--bin", type=Path, help="Tracy를 켜고 빌드한 실행 파일. 주면 빌드하지 않는다")
-    c.add_argument("--out", type=Path, help="기본 results/<날짜>-<meno 커밋>/tracy")
+    c.add_argument("--out", type=Path, help="기본 results/<날짜>-<meno 커밋>-<GPU>/tracy")
     c.add_argument("--mock", action="store_true")
     c.add_argument("--allow-software", action="store_true")
     r = sub.add_parser("report", help="내보낸 CSV로 보고서만 다시 만들기")
@@ -298,10 +299,13 @@ def main() -> None:
         return
 
     env = run_env(cfg)
-    gl = {} if args.mock else gl_info(env)
-    if not args.mock:
-        check_renderer(gl, args.allow_software)
+    gl = probe_gl(env, args.mock, args.allow_software)
     out = args.out or result_dir(args.mock, gl) / "tracy"
+    # 측정 결과 폴더 안에 캡처할 때는 같은 GPU인지 확인한다. 다른 GPU의 구간 비율이 그 폴더의 보고서에 섞이지 않게 한다.
+    measured = read_json(out.parent / "env.json").get("gl_renderer")
+    if gl and measured and measured != gl["gl_renderer"]:
+        sys.exit(f"{out.parent}는 {measured}로 잰 결과인데 지금 렌더러는 {gl['gl_renderer']}다. "
+                 "README의 '측정 환경'대로 GPU를 맞추거나 다른 --out을 쓴다")
     out.mkdir(parents=True, exist_ok=True)
     if args.mock:
         for n in tcfg["counts"]:
