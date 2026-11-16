@@ -1,8 +1,9 @@
-// 스프라이트 N개를 그리는 프레임 시간을 네 경로로 잰다 (SeoulTech-Fiat-Lux/Meno#30).
+// 스프라이트 N개를 그리는 프레임 시간을 경로별로 잰다 (SeoulTech-Fiat-Lux/Meno#30).
 //
 //   sfml-batched   SFML을 직접, 배칭: 사각형 N개를 sf::VertexArray 하나에 모아 draw를 한 번만 부름
 //                  (배칭을 했을 때의 하한선. sfml과의 차이가 "배칭으로 얻을 수 있는 최대 이득"이다)
 //   sfml           SFML을 직접: sf::Sprite N개에 위치·회전을 넣고 draw
+//   sfml-temp      SFML을 직접: 그릴 때마다 sf::Sprite를 새로 만들어 draw (meno Renderer와 같은 방식, 캐시 효과 확인용)
 //   meno-renderer  meno Game 루프 + draw 핸들러에서 Renderer::draw를 N번
 //   meno-object    meno Game 루프 + GameObject N개 (사용자가 실제로 쓰는 경로)
 //
@@ -234,6 +235,25 @@ int runSfml(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& sc
         });
 }
 
+// 스프라이트마다 draw하되, meno의 Renderer::draw처럼 그릴 때마다 sf::Sprite를 스택에 새로 만든다.
+// sfml과의 차이는 스프라이트 객체 N개를 메모리에 두고 프레임마다 두 번 훑느냐뿐이다(캐시 효과 확인용 대상).
+int runSfmlTemp(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& screenshot) {
+    sf::RenderWindow window(sf::VideoMode({kWidth, kHeight}), "meno_bench sfml-temp");
+    sf::Texture texture({kTexture, kTexture});
+    texture.update(texturePixels().data());
+    return runSfmlLoop(
+        window, bodies, rec, screenshot, [] {},
+        [&] {
+            for (const auto& b : bodies) {
+                sf::Sprite s(texture);
+                s.setOrigin({kHalf, kHalf});
+                s.setPosition({b.x, b.y});
+                s.setRotation(sf::degrees(b.angle));
+                window.draw(s);
+            }
+        });
+}
+
 // 배칭: 스프라이트마다 draw를 부르는 대신, 회전한 사각형 N개의 꼭짓점(삼각형 2개 = 6개)을 CPU에서 계산해
 // VertexArray 하나에 넣고 draw를 한 번 부른다. 텍스처가 하나라 상태 전환이 없다. sf::Sprite와 같은 그림이 나온다
 // (기준점은 텍스처 중심, 회전은 시계 방향 도 단위).
@@ -368,7 +388,7 @@ int runMeno(const Options& o, std::vector<Body>& bodies, FrameRecorder& rec, boo
 
 // --- 인자 ---------------------------------------------------------------------
 
-constexpr std::string_view kTargets[] = {"sfml-batched", "sfml", "meno-renderer", "meno-object"};
+constexpr std::string_view kTargets[] = {"sfml-batched", "sfml", "sfml-temp", "meno-renderer", "meno-object"};
 
 // 문자열 전체가 숫자일 때만 받는다. atoi처럼 "10k"를 10으로 읽고 넘어가지 않게 한다.
 template <class T>
@@ -419,6 +439,7 @@ int main(int argc, char** argv) {
 
     int code = 0;
     if (o.target == "sfml-batched") code = runSfmlBatched(bodies, rec, o.screenshot);
+    else if (o.target == "sfml-temp") code = runSfmlTemp(bodies, rec, o.screenshot);
     else if (o.target == "sfml") code = runSfml(bodies, rec, o.screenshot);
     else code = runMeno(o, bodies, rec, o.target == "meno-object");
 

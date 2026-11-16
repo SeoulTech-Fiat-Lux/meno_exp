@@ -14,7 +14,7 @@ N = 10,000에서의 평균 프레임 시간(ms)은 다음과 같다.
 | `meno-object` | 9.64 | 9.33 |
 
 - **배칭 효과**: N = 10,000에서 `sfml`의 프레임 시간은 `sfml-batched`의 5.38배(NVIDIA GeForce RTX 5070 Ti), 2.47배(AMD Radeon(TM) Graphics)이다.
-- **meno가 더하는 비용**: 모든 GPU와 N에서 `meno-renderer`/`sfml`은 0.95-1.04, `meno-object`/`meno-renderer`는 0.94-1.03이다. N ≥ 1,000의 16개 비교에서 95% 신뢰구간의 상한은 모두 1.04 이하다. 따라서 meno가 더하는 비용은 모든 비교에서 5% 미만이다. 다만 5개 비교는 신뢰구간 전체가 1.00보다 작아 meno 쪽이 빨랐다(가장 작은 하한 0.94). 원인은 확인하지 않았으며, 비용을 더하지 않는다는 결론에는 영향이 없다.
+- **meno가 더하는 비용**: 모든 GPU와 N에서 `meno-renderer`/`sfml`은 0.95-1.04, `meno-object`/`meno-renderer`는 0.94-1.03이다. N ≥ 1,000의 16개 비교에서 95% 신뢰구간의 상한은 모두 1.04 이하다. 따라서 meno는 측정 가능한 비용을 더하지 않으며(5% 미만), 그리기 성능을 높이지도 않는다.
 - **60 fps 예산**(p99 16.7 ms 이하): 이 PC(AMD Ryzen 7 9700X)에서는 모든 GPU와 대상이 측정한 가장 큰 N(10,000)까지 예산 안에 든다.
 - **GPU 사이 차이**(같은 CPU, N = 10,000): GPU에 따라 `sfml`은 2%, `sfml-batched`는 113% 차이가 난다. 따라서 배칭하지 않을 때의 비용은 CPU(그리기 호출 제출)가 결정하고, 배칭하면 GPU가 결정한다.
 - **Tracy**(`meno-object`, N = 10,000): 프레임 시간 중 NVIDIA GeForce RTX 5070 Ti에서는 `scene.draw` 73%, `window.display` 25%, AMD Radeon(TM) Graphics에서는 `window.display` 61%, `scene.draw` 36%를 차지한다.
