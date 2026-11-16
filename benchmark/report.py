@@ -104,8 +104,8 @@ def tracy_tables(f: Folder) -> list[str]:
     pct = lambda name, n: 100 * z["zones"][name][n] / z["frame_ms"][n]  # noqa: E731
     lines = [f"워밍업 {tcfg.get('warmup_frames', '-')}프레임을 제외한 {tcfg.get('frames', 0):,}프레임에서 구한 "
              "프레임당 self time(ms)이다. 구간끼리 겹치지 않으므로 모두 더하면 프레임 시간이 된다.", "",
-             "| 구간 | " + " | ".join(f"N={n:,} (ms)" for n in counts) + " | "
-             + " | ".join(f"N={n:,} (%)" for n in counts) + " |",
+             "| 구간 | " + " | ".join(f"N = {n:,} (ms)" for n in counts) + " | "
+             + " | ".join(f"N = {n:,} (%)" for n in counts) + " |",
              "|---|" + "---:|" * (2 * len(counts))]
     lines += [f"| {name} | " + " | ".join(f"{z['zones'][name][n]:.3f}" for n in counts) + " | "
               + " | ".join(f"{pct(name, n):.0f}" for n in counts) + " |" for name in names]
@@ -114,7 +114,7 @@ def tracy_tables(f: Folder) -> list[str]:
     if len(counts) >= 2:
         a, b = counts[0], counts[-1]
         grow = lambda name: z["zones"][name][b] - z["zones"][name][a]  # noqa: E731
-        lines += ["", f"#### N={a:,} → N={b:,}에서 늘어난 비용", "",
+        lines += ["", f"#### N = {a:,} → N = {b:,}에서 늘어난 비용", "",
                   "N에 비례해 늘어나는 구간은 배칭과 최적화의 대상이고, 거의 변하지 않는 구간은 고정 비용이다.", "",
                   "| 구간 | 늘어난 ms | 배수 |", "|---|---:|---:|"]
         for name in sorted(names, key=lambda x: -grow(x)):
@@ -138,10 +138,44 @@ def filled_notes(notes: str) -> str:
     return "\n\n".join(parts)
 
 
+def ratios(folders: list[Folder], a: str, b: str) -> list[float]:
+    """모든 GPU, 모든 N에서 a/b(평균)."""
+    return [f.mean(a, n) / f.mean(b, n) for f in folders for n in f.counts if f.mean(a, n) and f.mean(b, n)]
+
+
 def ratio_range(folders: list[Folder], a: str, b: str) -> str:
-    """모든 GPU, 모든 N에서 a/b(평균)의 범위. 물결표(~)는 두 개가 한 줄에 있으면 Markdown 취소선이 되므로 하이픈을 쓴다."""
-    xs = [f.mean(a, n) / f.mean(b, n) for f in folders for n in f.counts if f.mean(a, n) and f.mean(b, n)]
+    """a/b의 범위. 물결표(~)는 두 개가 한 줄에 있으면 Markdown 취소선이 되므로 하이픈을 쓴다."""
+    xs = ratios(folders, a, b)
     return f"{min(xs):.2f}-{max(xs):.2f}" if xs else "-"
+
+
+def rep_spread(folders: list[Folder], big_n: int = 1000) -> tuple[float | None, float | None]:
+    """같은 (대상, N)을 반복 측정했을 때 평균 프레임 시간이 흔들린 폭((최댓값 − 최솟값) / 중앙값).
+    (모든 칸의 중앙값, N ≥ big_n인 칸의 최댓값). 비율이 1.00에서 이만큼 벗어나는 것은 측정 오차로 본다."""
+    def spread(r: dict) -> float:
+        return (float(r["mean_max"]) - float(r["mean_min"])) / float(r["mean_ms"])
+
+    rows = [r for f in folders for r in f.rows.values()]
+    if not rows:
+        return None, None
+    allv = sorted(spread(r) for r in rows)
+    big = [spread(r) for r in rows if int(r["count"]) >= big_n]
+    return allv[len(allv) // 2], (max(big) if big else None)
+
+
+def spread_note(folders: list[Folder]) -> list[str]:
+    """측정 방법에 넣을 한 줄: 반복 사이에 평균 프레임 시간이 흔들린 폭. 표의 작은 차이를 읽는 기준이 된다."""
+    typical, big = rep_spread(folders)
+    if typical is None:
+        return []
+    tail = f"(N ≥ 1,000에서 최대 {100 * big:.0f}%)" if big is not None else ""
+    return [f"- 같은 조건을 반복 측정한 평균 프레임 시간은 보통 약 {100 * typical:.0f}% 범위에서 흔들렸다{tail}. "
+            "따라서 이보다 작은 차이는 측정 오차로 본다."]
+
+
+def cpu_name(folders: list[Folder]) -> str:
+    """"AMD Ryzen 7 9700X 8-Core Processor" → "AMD Ryzen 7 9700X". 폴더마다 다르면 모두 적는다."""
+    return ", ".join(sorted({re.sub(r"\s+\d+-Core Processor$", "", f.env.get("cpu", "?")) for f in folders}))
 
 
 def budget(folders: list[Folder]) -> str:
@@ -151,7 +185,7 @@ def budget(folders: list[Folder]) -> str:
         return ok[-1] if ok else None
 
     if all(last_ok(f, t) == f.counts[-1] for f in folders for t in f.targets):
-        return f"모든 GPU에서 모든 대상이 측정한 가장 큰 N({folders[0].counts[-1]:,})까지 예산 안에 든다."
+        return f"모든 GPU와 대상이 측정한 가장 큰 N({folders[0].counts[-1]:,})까지 예산 안에 든다."
     # 대상 이름 뒤 조사(이/가)가 이름마다 달라지므로 "이름: 값" 꼴로 적는다.
     return " ".join(f"{f.gpu}에서 예산 안에 드는 가장 큰 N은 " + ", ".join(
         f"`{t}` " + (f"{n:,}" if (n := last_ok(f, t)) else "없음") for t in f.targets) + "이다." for f in folders)
@@ -239,10 +273,19 @@ def summary(folders: list[Folder]) -> list[str]:
     if all(f.mean("sfml", n) and f.mean("sfml-batched", n) for f in folders):
         lines.append(f"- **배칭 효과**: N = {n:,}에서 `sfml`의 프레임 시간은 `sfml-batched`의 " + ", ".join(
             f"{f.mean('sfml', n) / f.mean('sfml-batched', n):.2f}배({f.gpu})" for f in folders) + "이다.")
+    typical, _ = rep_spread(folders)
+    pairs = [("meno-renderer", "sfml"), ("meno-object", "meno-renderer")]
+    worst = max(abs(r - 1) for a, b in pairs for r in ratios(folders, a, b)) if typical is not None else None
+    # 비율은 두 중앙값의 비라서 각각의 흔들림이 겹친다. 보통 흔들림의 1.5배 안이면 측정 오차와 구분되지 않는다고 본다.
+    if worst is not None and worst <= 1.5 * typical:
+        reading = (f"1.00에서 벗어난 정도(최대 {100 * worst:.0f}%)는 반복 사이의 보통 흔들림(약 {100 * typical:.0f}%)과 "
+                   "같은 수준이므로, meno가 더하는 비용은 측정되지 않을 만큼 작다.")
+    else:
+        reading = "1.00보다 크면 그만큼 meno가 비용을 더한다는 뜻이다."
     lines.append(f"- **meno가 더하는 비용**: 모든 GPU와 N에서 `meno-renderer`/`sfml`은 "
                  f"{ratio_range(folders, 'meno-renderer', 'sfml')}, `meno-object`/`meno-renderer`는 "
-                 f"{ratio_range(folders, 'meno-object', 'meno-renderer')}이다. 1.00에 가까울수록 더하는 비용이 없다는 뜻이다.")
-    lines.append("- **60 fps 예산**(p99 16.7 ms 이하): " + budget(folders))
+                 f"{ratio_range(folders, 'meno-object', 'meno-renderer')}이다. {reading}")
+    lines.append(f"- **60 fps 예산**(p99 16.7 ms 이하): 이 PC({cpu_name(folders)})에서는 " + budget(folders))
     lines += cross_gpu(folders, n)
     tracy = []
     for f in folders:
@@ -320,7 +363,8 @@ def main() -> None:
                 ("수직 동기화 확인", vsync_cell)]
 
     doc = ["# 성능 측정: 스프라이트 N개 그리기", "", *head,
-           "배칭 적용 여부를 판단하기 위해, 스프라이트 N개를 그리는 데 걸리는 프레임 시간을 네 가지 경로로 측정했다"
+           "Meno 라이브러리에 배칭을 적용할 때 이점이 있을지를 판단하기 위해, 스프라이트 N개를 그리는 데 걸리는 프레임 시간을 "
+           "네 가지 경로로 측정했다"
            "(SeoulTech-Fiat-Lux/Meno#30).", "",
            "## 요약", "", *summary(folders), "",
            "## 측정 방법", "",
@@ -333,6 +377,7 @@ def main() -> None:
            f"{sweep.get('reps', '-')}회 측정했으며, 측정 순서는 무작위로 섞었다.",
            f"- 측정마다 워밍업 {sweep.get('warmup_frames', '-')}프레임을 버리고 {sweep.get('frames', 0):,}프레임을 기록해 "
            "프레임 시간의 평균, p50, p99를 구했다. 표의 값은 반복 사이의 중앙값이다.",
+           *spread_note(folders),
            "- Release 빌드에서 프레임 제한과 수직 동기화를 끄고 측정했다. 네 대상은 같은 텍스처, 시드, "
            "이동 함수(고정 dt 1/60초)를 쓴다.", "",
            "## 측정 환경", "",
@@ -363,7 +408,7 @@ def main() -> None:
             "- 모든 수치는 위의 측정 환경을 기준으로 한다. GPU, 드라이버, CPU가 달라지면 절댓값도 달라진다.",
             *(["- WSL2(WSLg)에서 측정했으므로 Windows 화면 합성을 거치며, OpenGL 호출을 Direct3D 12로 변환하는 비용이 "
                "CPU에 더해진다."] if any(f.env.get("wsl") for f in folders) else []),
-            f"- CPU는 {', '.join(sorted({f.env.get('cpu', '?') for f in folders}))} 한 종류만 사용했으므로, "
+            f"- CPU는 {cpu_name(folders)} 한 종류만 사용했으므로, "
             "느린 CPU에서의 수치는 얻지 못했다.", ""]
     text = re.sub(r"\n{3,}", "\n\n", "\n".join(doc))
     args.out.parent.mkdir(parents=True, exist_ok=True)
