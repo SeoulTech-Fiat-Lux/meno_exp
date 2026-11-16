@@ -7,6 +7,7 @@
 사용 (benchmark/ 에서):
     python3 run.py --mock                  # 실행 파일 없이 흐름 점검 (results-mock/)
     python3 run.py --dry-run               # 돌릴 목록만 출력
+    OUT=$(python3 run.py --print-out)      # 기본 결과 폴더 경로만 출력 (다른 도구에 --out으로 넘긴다)
     python3 run.py                         # 빌드 후 측정 (results/<날짜>-<meno 커밋>-<GPU>/)
     python3 run.py --bin <실행 파일>       # 이미 빌드한 실행 파일로 측정
 
@@ -135,6 +136,8 @@ def main() -> None:
     ap.add_argument("--reps", type=int, help="bench.toml의 반복 수 덮어쓰기 (점검용)")
     ap.add_argument("--mock", action="store_true", help="실행 파일 대신 가짜 프레임 시간으로 흐름 점검")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--print-out", action="store_true",
+                    help="기본 결과 폴더 경로만 출력하고 끝낸다. 날짜가 바뀌어도 모든 도구가 같은 폴더를 쓰게 한다")
     ap.add_argument("--allow-software", action="store_true",
                     help="소프트웨어 렌더러(llvmpipe 등)에서도 돌린다. 흐름 점검용이고 결과는 표에 쓰지 않는다")
     args = ap.parse_args()
@@ -148,6 +151,9 @@ def main() -> None:
     proc_env = run_env(cfg)
     gl = probe_gl(proc_env, args.mock, args.allow_software)
     out = args.out or result_dir(args.mock, gl)
+    if args.print_out:
+        print(out)
+        return
     jobs = plan(cfg["sweep"])
     log_path = out / "runs.jsonl"
     done = ok_runs(read_runs(out))

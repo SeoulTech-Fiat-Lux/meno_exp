@@ -84,12 +84,13 @@ def check_renderer(gl: dict, allow_software: bool) -> None:
     if not renderer:
         sys.exit("GL 렌더러를 알 수 없다. glxinfo가 없거나 화면(DISPLAY)에 연결되지 않았다.\n"
                  "  sudo apt-get install -y mesa-utils 후 glxinfo -B 로 확인한다 (README의 '측정 환경')")
-    print(f"GL 렌더러: {renderer}")
+    # 진단은 표준 오류로 낸다. 표준 출력은 run.py --print-out처럼 셸 변수로 받는 값에 쓴다.
+    print(f"GL 렌더러: {renderer}", file=sys.stderr)
     if is_software(renderer):
         if not allow_software:
             sys.exit(f"소프트웨어 렌더러({renderer})라 GPU 성능을 잴 수 없다. README의 '측정 환경'을 따르거나, "
                      "흐름만 볼 때는 --allow-software")
-        print("경고: 소프트웨어 렌더러로 잰다. 이 결과는 표에 쓰지 않는다")
+        print("경고: 소프트웨어 렌더러로 잰다. 이 결과는 표에 쓰지 않는다", file=sys.stderr)
 
 
 def probe_gl(env: dict, mock: bool, allow_software: bool) -> dict:

@@ -16,12 +16,14 @@
     zones-<N>.csv             구간 호출마다 한 줄, self time (tracy-csvexport -u -e)
     frames-<N>.csv            "frame" 구간 호출마다 한 줄, 포함 시간 (tracy-csvexport -u -f frame)
     zones.md, zones.png       프레임당 구간별 비용 표와 그림 (자동 생성, 실행할 때마다 다시 만든다)
+    zones.json                같은 값. report.py가 읽는다(원자료 없이도 보고서를 만들 수 있게)
     notes.md                  사람이 쓰는 분석. 없을 때만 양식을 만든다(덮어쓰지 않음)
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import random
 import subprocess
@@ -197,6 +199,10 @@ def report(out: Path, tcfg: dict) -> None:
             ratio = stacks[b][1][z] / stacks[a][1][z] if stacks[a][1][z] > 0 else float("inf")
             lines.append(f"| {z} | {d:.3f} | {'-' if ratio == float('inf') else f'{ratio:.1f}×'} |")
     (out / "zones.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # 사람이 읽는 zones.md의 문장은 바뀔 수 있다. report.py는 값을 이 파일에서 읽는다.
+    record = {"target": tcfg["target"], "counts": counts, "frame_ms": {n: stacks[n][0] for n in counts},
+              "zones": {z: {n: stacks[n][1][z] for n in counts} for z in labels}}
+    (out / "zones.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     print("\n".join(lines))
     figure(out, counts, stacks, labels)
     notes_template(out, counts)

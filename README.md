@@ -3,7 +3,7 @@
 SeoulTech-Fiat-Lux/Meno의 실험 자료.
 
 - Meno#29 LLM 생성 비교 실험: 계획 [PLAN.md](PLAN.md), 운영 규칙 [docs/harness.md](docs/harness.md)
-- Meno#30 성능 측정: [benchmark/README.md](benchmark/README.md)
+- Meno#30 성능 측정: 따라 하기 [benchmark/README.md](benchmark/README.md), 최종 보고서 [benchmark/results/report.md](benchmark/results/report.md)
 
 ## 구성
 
