@@ -1,0 +1,37 @@
+[  1%] Built target SheenBidi
+[ 12%] Built target sfml-system
+[ 37%] Built target sfml-audio
+[ 69%] Built target sfml-window
+[ 97%] Built target sfml-graphics
+[ 98%] Building CXX object CMakeFiles/game.dir/main.cpp.o
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/main.cpp: In member function ‘void {anonymous}::Game::draw(sf::RenderWindow&)’:
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/main.cpp:139:34: error: ‘kWinW’ was not declared in this scope
+  139 |             placeCentered(title, kWinW / 2.f, 220.f);
+      |                                  ^~~~~
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/main.cpp:152:37: error: ‘kWinW’ was not declared in this scope
+  152 |             sf::RectangleShape bar({kWinW, kHud});
+      |                                     ^~~~~
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/main.cpp:152:49: error: no matching function for call to ‘sf::RectangleShape::RectangleShape(<brace-enclosed initializer list>)’
+  152 |             sf::RectangleShape bar({kWinW, kHud});
+      |                                                 ^
+In file included from /home/im_yarn/meno_exp/llm-comparison/work/sfml/build/_deps/sfml-src/include/SFML/Graphics.hpp:41,
+                 from /home/im_yarn/meno_exp/llm-comparison/work/sfml/main.cpp:2:
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/build/_deps/sfml-src/include/SFML/Graphics/RectangleShape.hpp:54:14: note: candidate: ‘sf::RectangleShape::RectangleShape(sf::Vector2f)’
+   54 |     explicit RectangleShape(Vector2f size = {});
+      |              ^~~~~~~~~~~~~~
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/build/_deps/sfml-src/include/SFML/Graphics/RectangleShape.hpp:54:38: note:   no known conversion for argument 1 from ‘<brace-enclosed initializer list>’ to ‘sf::Vector2f’ {aka ‘sf::Vector2<float>’}
+   54 |     explicit RectangleShape(Vector2f size = {});
+      |                             ~~~~~~~~~^~~~~~~~~
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/build/_deps/sfml-src/include/SFML/Graphics/RectangleShape.hpp:45:25: note: candidate: ‘constexpr sf::RectangleShape::RectangleShape(const sf::RectangleShape&)’
+   45 | class SFML_GRAPHICS_API RectangleShape : public Shape
+      |                         ^~~~~~~~~~~~~~
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/build/_deps/sfml-src/include/SFML/Graphics/RectangleShape.hpp:45:25: note:   no known conversion for argument 1 from ‘<brace-enclosed initializer list>’ to ‘const sf::RectangleShape&’
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/build/_deps/sfml-src/include/SFML/Graphics/RectangleShape.hpp:45:25: note: candidate: ‘constexpr sf::RectangleShape::RectangleShape(sf::RectangleShape&&)’
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/build/_deps/sfml-src/include/SFML/Graphics/RectangleShape.hpp:45:25: note:   no known conversion for argument 1 from ‘<brace-enclosed initializer list>’ to ‘sf::RectangleShape&&’
+/home/im_yarn/meno_exp/llm-comparison/work/sfml/main.cpp:185:33: error: ‘kWinW’ was not declared in this scope
+  185 |             placeCentered(over, kWinW / 2.f, 200.f);
+      |                                 ^~~~~
+gmake[3]: *** [CMakeFiles/game.dir/build.make:76: CMakeFiles/game.dir/main.cpp.o] Error 1
+gmake[2]: *** [CMakeFiles/Makefile2:231: CMakeFiles/game.dir/all] Error 2
+gmake[1]: *** [CMakeFiles/Makefile2:238: CMakeFiles/game.dir/rule] Error 2
+gmake: *** [Makefile:169: game] Error 2

@@ -1,0 +1,4 @@
+﻿run_id,model,game,condition,round,category,first_error
+04-shooter-sfml-codex-cli_gpt-6.1-sol-r1,codex-cli/gpt-6.1-sol,04-shooter,sfml,1,cpp,/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:104:53: error: ‘KeyCount’ is not a member of ‘sf::Keyboard::Key’
+11-survivor-sfml-codex-cli_gpt-6.1-sol-r1,codex-cli/gpt-6.1-sol,11-survivor,sfml,1,cpp,/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:798:53: error: ‘KeyCount’ is not a member of ‘sf::Keyboard::Key’
+02-snake-sfml-claude-cli_claude-haiku-5-5-r3,claude-cli/claude-haiku-5-5,02-snake,sfml,1,cpp,/home/im_yarn/meno_exp/llm-comparison/work/sfml/main.cpp:139:34: error: ‘kWinW’ was not declared in this scope

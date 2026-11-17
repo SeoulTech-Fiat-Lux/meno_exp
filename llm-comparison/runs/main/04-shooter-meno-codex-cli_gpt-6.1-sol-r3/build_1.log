@@ -1,0 +1,9 @@
+[  0%] Built target SheenBidi
+[  9%] Built target sfml-system
+[ 50%] Built target sfml-audio
+[ 57%] Built target sfml-window
+[ 81%] Built target sfml-graphics
+[ 98%] Built target meno
+[ 99%] Building CXX object CMakeFiles/game.dir/main.cpp.o
+[100%] Linking CXX executable game
+[100%] Built target game

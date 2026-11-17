@@ -1,0 +1,1 @@
+{"exit_code": 124, "elapsed_s": 32.941, "early_exit": false, "frames": 1728, "frametime_dump": true, "frame_ms_mean": 16.728, "frame_ms_p50": 16.68, "frame_ms_p95": 17.8, "frame_ms_p99": 18.5, "frame_ms_max": 23.71}

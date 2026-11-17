@@ -1,0 +1,60 @@
+[  1%] Built target SheenBidi
+[ 12%] Built target sfml-system
+[ 37%] Built target sfml-audio
+[ 69%] Built target sfml-window
+[ 97%] Built target sfml-graphics
+[ 98%] Building CXX object CMakeFiles/game.dir/main.cpp.o
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:798:53: error: ‘KeyCount’ is not a member of ‘sf::Keyboard::Key’
+  798 |         static_cast<std::size_t>(sf::Keyboard::Key::KeyCount);
+      |                                                     ^~~~~~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:799:10: error: ‘<expression error>’ in namespace ‘std’ does not name a type
+  799 |     std::array<bool, Count> held{};
+      |          ^~~~~~~~~~~~~~~~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:800:10: error: ‘<expression error>’ in namespace ‘std’ does not name a type
+  800 |     std::array<bool, Count> taps{};
+      |          ^~~~~~~~~~~~~~~~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp: In member function ‘void {anonymous}::MovementInput::press(sf::Keyboard::Key)’:
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:807:13: error: ‘held’ was not declared in this scope
+  807 |             held[static_cast<std::size_t>(index)] = true;
+      |             ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:808:13: error: ‘taps’ was not declared in this scope
+  808 |             taps[static_cast<std::size_t>(index)] = true;
+      |             ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp: In member function ‘void {anonymous}::MovementInput::release(sf::Keyboard::Key)’:
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:816:13: error: ‘held’ was not declared in this scope
+  816 |             held[static_cast<std::size_t>(index)] = false;
+      |             ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp: In member function ‘bool {anonymous}::MovementInput::down(sf::Keyboard::Key) const’:
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:822:16: error: ‘held’ was not declared in this scope
+  822 |         return held[index] || taps[index];
+      |                ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:822:31: error: ‘taps’ was not declared in this scope
+  822 |         return held[index] || taps[index];
+      |                               ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp: In member function ‘void {anonymous}::MovementInput::clear()’:
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:838:9: error: ‘held’ was not declared in this scope
+  838 |         held.fill(false);
+      |         ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:839:9: error: ‘taps’ was not declared in this scope
+  839 |         taps.fill(false);
+      |         ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp: In function ‘int main()’:
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:939:39: error: ‘struct {anonymous}::MovementInput’ has no member named ‘taps’
+  939 |                                 input.taps.fill(false);
+      |                                       ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:946:35: error: ‘struct {anonymous}::MovementInput’ has no member named ‘taps’
+  946 |                             input.taps.fill(false);
+      |                                   ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:963:35: error: ‘struct {anonymous}::MovementInput’ has no member named ‘taps’
+  963 |                             input.taps.fill(false);
+      |                                   ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:991:27: error: ‘struct {anonymous}::MovementInput’ has no member named ‘taps’
+  991 |                     input.taps.fill(false);
+      |                           ^~~~
+/home/ttatti2001/meno_exp/llm-comparison/work/sfml/main.cpp:1005:23: error: ‘struct {anonymous}::MovementInput’ has no member named ‘taps’
+ 1005 |                 input.taps.fill(false);
+      |                       ^~~~
+gmake[3]: *** [CMakeFiles/game.dir/build.make:79: CMakeFiles/game.dir/main.cpp.o] Error 1
+gmake[2]: *** [CMakeFiles/Makefile2:267: CMakeFiles/game.dir/all] Error 2
+gmake[1]: *** [CMakeFiles/Makefile2:274: CMakeFiles/game.dir/rule] Error 2
+gmake: *** [Makefile:169: game] Error 2
