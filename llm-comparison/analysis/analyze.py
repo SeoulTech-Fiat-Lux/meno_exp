@@ -53,6 +53,10 @@ METRICS = [
      lambda r, s: (int(s >= 1.0) if s is not None else None) if r["build_success"] else 0),
     ("code_lines", "코드 줄 수 (빈 줄 제외)", "exploratory", lambda r, s: r.get("code_lines")),
     ("reasoning_tokens", "추론 토큰", "exploratory", lambda r, s: r.get("reasoning_tokens")),
+    # 결과를 본 뒤 추가했다(PLAN 3절). 출력 토큰은 추론 토큰을 포함하므로, 빼면 답으로 쓴 양(주로 코드)이 남는다.
+    ("answer_tokens", "답변 토큰 (출력 − 추론)", "exploratory",
+     lambda r, s: r["completion_tokens"] - r["reasoning_tokens"]
+     if r.get("completion_tokens") is not None and r.get("reasoning_tokens") is not None else None),
     ("llm_latency_s", "LLM 시간(초)", "exploratory", lambda r, s: r.get("llm_latency_s")),
     ("early_exit", "무입력 10초 안 종료", "exploratory",
      lambda r, s: int(bool((r.get("noinput") or {}).get("early_exit"))) if r["build_success"] and r.get("noinput") else None),
@@ -235,7 +239,7 @@ def fmt(v, digits=3):
 
 # 지표마다 읽기 좋은 단위로 쓴다. 계산은 바꾸지 않고 보여 주는 형식만 정한다.
 RATES = {"pass_all", "first_round", "built", "pass_built", "complete", "early_exit", "frame_p95_ok"}
-DIGITS = {"rounds_to_build": 2, "llm_latency_s": 1, "code_lines": 0, "completion_tokens": 0, "reasoning_tokens": 0}
+DIGITS = {"rounds_to_build": 2, "llm_latency_s": 1, "code_lines": 0, "completion_tokens": 0, "reasoning_tokens": 0, "answer_tokens": 0}
 ERROR_LABELS = {"sfml2_api": "SFML 2 API를 SFML 3에 씀", "sfml_in_meno": "meno 조건에서 SFML 헤더", "meno_api": "meno API 오용",
                 "link": "링크 오류", "cpp": "그 밖의 C++ 오류"}
 
