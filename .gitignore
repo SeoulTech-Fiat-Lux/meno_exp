@@ -32,3 +32,4 @@ benchmark/results/*/tracy/frames-*.csv
 benchmark/results/*-raw.tar.gz
 benchmark/results/report-draft.md
 *.tracy
+llm-comparison/runs/**/game.orig
