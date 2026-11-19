@@ -1,6 +1,6 @@
 """결과 폴더: 이름 짓기와 읽기. 쓰는 쪽은 각 도구다(run.py는 raw/와 runs.jsonl, summarize.py는 summary.* 등).
 
-결과 폴더 구조와 커밋하는 것은 README의 "결과 폴더에서 커밋하는 것".
+결과 폴더 구조와 커밋하는 것은 README의 "결과 폴더에서 커밋하는 것"을 본다.
 """
 from __future__ import annotations
 
@@ -31,10 +31,10 @@ def result_dir(mock: bool, gl: dict) -> Path:
 
 
 def require_raw(out: Path) -> None:
-    """원자료(raw/)가 있어야 다시 만드는 도구가 부른다. 원자료는 git 밖에 보관하므로, 없을 때 돌리면 커밋된
+    """원자료(raw/)에서 결과를 다시 만드는 도구가 부른다. 원자료는 git 밖에 보관하므로, 없을 때 돌리면 커밋된
     결과를 빈 값으로 덮어쓰게 된다. 그 전에 멈춘다."""
     if not (out / "raw").is_dir():
-        sys.exit(f"{out / 'raw'}가 없다. 원자료를 풀어 둔 뒤 돌린다(README의 \"원자료 보관\")")
+        sys.exit(f"{out / 'raw'}가 없다. 원자료를 풀어 둔 뒤 돌린다(README의 \"4. 원자료를 보관하고 커밋한다\")")
 
 
 def read_json(path: Path) -> dict:
@@ -42,7 +42,7 @@ def read_json(path: Path) -> dict:
 
 
 def read_runs(out: Path) -> list[dict]:
-    """runs.jsonl. 아직 측정하지 않은 폴더면 빈 목록."""
+    """runs.jsonl을 읽는다. 아직 측정하지 않은 폴더면 빈 목록을 돌려준다."""
     path = out / "runs.jsonl"
     return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines()] if path.exists() else []
 

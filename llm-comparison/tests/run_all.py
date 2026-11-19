@@ -1,6 +1,6 @@
 """tests/의 테스트를 모두 돌린다. LLM·빌드·Xvfb 없이 가짜 출력으로 하니스·채점·분석 흐름을 확인한다.
 
-사용 (llm-comparison/ 에서):
+사용 (llm-comparison/에서):
     python3 tests/run_all.py            # 모두
     python3 tests/run_all.py cli trunc  # 이름에 주어진 글자가 들어간 테스트만
 

@@ -34,7 +34,7 @@ def main() -> None:
     parser.add_argument("out_dir", type=Path)
     parser.add_argument("mapping", type=Path)
     parser.add_argument("--graders", required=True, help="쉼표로 나눈 채점자 이름")
-    parser.add_argument("--per-run", type=int, default=2, help="회차마다 채점자 수")
+    parser.add_argument("--per-run", type=int, default=2, help="회차마다 배정할 채점자 수")
     args = parser.parse_args()
 
     mapping_path = args.mapping.expanduser()
@@ -42,7 +42,7 @@ def main() -> None:
         parser.exit(1, "대응표를 저장소 안에 두면 채점자가 볼 수 있다. 저장소 밖 경로를 준다.\n")
     graders = [g.strip() for g in args.graders.split(",") if g.strip()]
     if args.per_run > len(graders):
-        parser.exit(1, "회차마다 채점자 수가 채점자 수보다 많다.\n")
+        parser.exit(1, "--per-run 값(회차마다 배정할 채점자 수)이 전체 채점자 수보다 많다.\n")
 
     out_dir = args.out_dir.expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -26,7 +26,7 @@ from probe import is_software
 from results import read_json, read_runs
 
 BUDGET_MS = 1000 / 60  # 60 fps 한 프레임
-# 측정 중 WSL 안에서 측정 프로그램 밖이 쓴 CPU(코어 수)가 이보다 많으면 경고. 쉴 때는 0인데, 측정 중에는 창을 화면에
+# 측정 중 WSL 안에서 측정 프로그램 밖의 작업이 쓴 CPU(코어 수)가 이보다 많으면 경고. 쉴 때는 0인데, 측정 중에는 창을 화면에
 # 합성하는 WSLg와 GPU로 넘기는 커널 작업 몫으로 0.3~0.6코어가 늘 잡힌다(RTX 5070 Ti 기준). 그 위로 병렬 빌드처럼
 # 코어를 여럿 쓰는 작업이 겹쳤을 때만 잡는다.
 OTHER_CORES_LIMIT = 1.5
@@ -35,7 +35,7 @@ HOST_LOAD_LIMIT = 30.0
 # GPU를 바꿔도 배칭하지 않은 비용이 이 비율 안에서만 달라지면 "CPU가 정한다"고 판정한다(아래 cross_gpu).
 SAME_COST = 0.15
 # meno가 비용을 더하는가의 판정(비열등성). 비율의 95% 신뢰구간 상한이 1 + EQUIV_MARGIN 이하여야 한다.
-# ±5%는 N = 10,000(약 10 ms)에서 0.5 ms, 60 fps 예산의 3%로, 게임에서 체감되지 않는 크기로 잡았다.
+# ±5%는 N = 10,000(약 10 ms)에서 0.5 ms로 60 fps 예산의 3%이며, 게임에서 체감되지 않는 크기로 잡았다.
 EQUIV_MARGIN = 0.05
 EQUIV_MIN_N = 1000  # 이보다 작은 N은 화면 전환의 고정 비용이 프레임 대부분이라 흔들림이 크다
 MENO_STAGES = [("meno-renderer", "sfml"), ("meno-object", "meno-renderer")]
@@ -212,7 +212,7 @@ def equivalence_sentence(folders: list[Folder]) -> str:
 
 def rep_spread(folders: list[Folder], big_n: int = 1000) -> tuple[float | None, float | None]:
     """같은 (대상, N)을 반복 측정했을 때 평균 프레임 시간이 흔들린 폭((최댓값 − 최솟값) / 중앙값).
-    (모든 칸의 중앙값, N ≥ big_n인 칸의 최댓값)."""
+    (모든 칸의 중앙값, N ≥ big_n인 칸의 최댓값)을 돌려준다."""
     def spread(r: dict) -> float:
         return (float(r["mean_max"]) - float(r["mean_min"])) / float(r["mean_ms"])
 

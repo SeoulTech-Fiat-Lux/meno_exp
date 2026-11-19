@@ -63,7 +63,7 @@ def build_tools(cfg: dict) -> Path:
     return out / "bin"
 
 
-FRAME_ZONE = "frame"  # bench_app이 프레임 하나를 통째로 감싸는 구간 이름 (README의 "Tracy 병목 분석")
+FRAME_ZONE = "frame"  # bench_app이 프레임 하나를 통째로 감싸는 구간 이름 (README의 "측정 대상과 실행 파일 약속")
 
 
 def export(bin_dir: Path, trace: Path, out: Path, n: int) -> None:
@@ -154,7 +154,7 @@ def report(out: Path, tcfg: dict) -> None:
     top = tcfg["top_zones"]
     counts = sorted(int(p.stem.split("-")[1]) for p in out.glob("zones-*.csv"))
     if not counts:
-        sys.exit(f"{out}에 zones-*.csv가 없다. 원자료를 풀어 둔 뒤 돌린다(README의 \"원자료 보관\")")
+        sys.exit(f"{out}에 zones-*.csv가 없다. 원자료를 풀어 둔 뒤 돌린다(README의 \"4. 원자료를 보관하고 커밋한다\")")
     data = {n: load_capture(out, n, tcfg["warmup_frames"]) for n in counts}
     # 가장 큰 N에서 비싼 구간부터 이름을 붙이고, 나머지는 other로 묶는다. 순서를 N마다 바꾸지 않으므로 구간의 색이 고정된다.
     ranked = sorted((z for z in data[counts[-1]][1] if z != FRAME_ZONE), key=lambda z: -data[counts[-1]][1][z])
@@ -263,7 +263,7 @@ def notes_template(out: Path) -> None:
 ## 관찰
 
 - 가장 비싼 구간 (N이 가장 클 때):
-- N에 비례해 는 구간 (zones.md "늘어난 비용"):
+- N에 비례해 느는 구간 (zones.md "늘어난 비용"):
 - 고정 비용 구간:
 - 이 GPU에서 다른 점:
 
@@ -307,7 +307,7 @@ def main() -> None:
     measured = read_json(out.parent / "env.json").get("gl_renderer")
     if gl and measured and measured != gl["gl_renderer"]:
         sys.exit(f"{out.parent}는 {measured}로 잰 결과인데 지금 렌더러는 {gl['gl_renderer']}다. "
-                 "README의 '측정 환경'대로 GPU를 맞추거나 다른 --out을 쓴다")
+                 "README의 '2-1. 터미널을 준비하고 GPU를 고른다'대로 GPU를 맞추거나 다른 --out을 쓴다")
     out.mkdir(parents=True, exist_ok=True)
     if args.mock:
         for n in tcfg["counts"]:

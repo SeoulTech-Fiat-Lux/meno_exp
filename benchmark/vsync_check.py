@@ -36,7 +36,7 @@ def verdict(on: dict, off: dict, on_unsupported: bool) -> tuple[bool, str]:
     hz_on, on_locked = _locked(on)
     if off_locked:
         return False, (f"실패: 끔인데도 {off['median_ms']:.2f} ms로 {hz_off} Hz 주기에 묶여 있다. "
-                       "드라이버나 화면 합성기가 동기화를 강제한다. README의 '수직 동기화 확인'을 따른다")
+                       "드라이버나 화면 합성기가 동기화를 강제한다. README의 '문제 해결'을 따른다")
     if on_locked:
         control = f"대조군: 켜면 {on['median_ms']:.2f} ms({hz_on} Hz)에 묶이므로, 묶임을 감지할 수 있는 환경이다"
     elif on_unsupported:

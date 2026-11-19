@@ -76,7 +76,7 @@ text = "\n".join(problems)
 for expected in ("2번 기록됨", "입력 해시가 여러 개", "동결 잠금", "동결 상태가 아닐 때", "실행 파일이 없음", "기록이 없는 회차 1개"):
     assert expected in text, (expected, problems)
 
-# 3) 대표작: 통과율 → 왕복 수 → 출력 토큰 → 회차 ID
+# 3) 대표작: 통과율 → 왕복 수 → 출력 토큰 → 회차 ID 순으로 고른다
 recs = [
     {"run_id": "g-meno-a", "game": "g", "condition": "meno", "build_success": True, "rounds": 3, "completion_tokens": 10, "model_requested": "m"},
     {"run_id": "g-meno-b", "game": "g", "condition": "meno", "build_success": True, "rounds": 1, "completion_tokens": 99, "model_requested": "m"},

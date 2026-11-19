@@ -83,13 +83,13 @@ def check_renderer(gl: dict, allow_software: bool) -> None:
     renderer = gl["gl_renderer"]
     if not renderer:
         sys.exit("GL 렌더러를 알 수 없다. glxinfo가 없거나 화면(DISPLAY)에 연결되지 않았다.\n"
-                 "  sudo apt-get install -y mesa-utils 후 glxinfo -B 로 확인한다 (README의 '측정 환경')")
+                 "  sudo apt-get install -y mesa-utils 후 glxinfo -B로 확인한다 (README의 '2-1. 터미널을 준비하고 GPU를 고른다')")
     # 진단은 표준 오류로 낸다. 표준 출력은 run.py --print-out처럼 셸 변수로 받는 값에 쓴다.
     print(f"GL 렌더러: {renderer}", file=sys.stderr)
     if is_software(renderer):
         if not allow_software:
-            sys.exit(f"소프트웨어 렌더러({renderer})라 GPU 성능을 잴 수 없다. README의 '측정 환경'을 따르거나, "
-                     "흐름만 볼 때는 --allow-software")
+            sys.exit(f"소프트웨어 렌더러({renderer})라 GPU 성능을 잴 수 없다. README의 '문제 해결'을 따르거나, "
+                     "흐름만 볼 때는 --allow-software를 준다")
         print("경고: 소프트웨어 렌더러로 잰다. 이 결과는 표에 쓰지 않는다", file=sys.stderr)
 
 
@@ -119,7 +119,7 @@ def windows_power() -> dict:
         return {}
 
     def state(alias: str) -> dict:
-        # 출력 끝의 두 값이 현재 AC(전원 연결), DC(배터리) 설정이다. 앞의 0x 값들은 허용 범위.
+        # 출력 끝의 두 값이 현재 AC(전원 연결), DC(배터리) 설정이다. 앞의 0x 값들은 허용 범위다.
         vals = re.findall(r"0x([0-9a-fA-F]{8})", sh(["powercfg.exe", "/query", "SCHEME_CURRENT", "SUB_PROCESSOR", alias]))
         return {"ac": int(vals[-2], 16), "dc": int(vals[-1], 16)} if len(vals) >= 2 else {}
 
@@ -172,7 +172,7 @@ class HostLoad:
 
 
 class CpuSnapshot(NamedTuple):
-    """한 시점의 CPU 누적 사용. 두 시점의 차로 측정 한 번 동안의 사용을 낸다(cpu_usage)."""
+    """한 시점의 CPU 누적 사용량. 두 시점의 차로 측정 한 번 동안의 사용량을 구한다(cpu_usage)."""
     at: float                # time.monotonic()
     busy_s: float | None     # WSL 전체에서 바빴던 CPU 초(/proc/stat). 읽지 못하면 None
     children_s: float        # 끝난 자식 프로세스(측정 프로그램)의 CPU 초

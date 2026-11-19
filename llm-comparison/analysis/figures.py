@@ -5,13 +5,13 @@
     python3 analysis/figures.py runs/pilot-<해시> - analysis/pilot      # 채점 전: 통과율 그림은 만들지 않음
 
 출력 (<out>/figures/):
-    1-primary-pairs.png   1차 지표를 셀(모델 × 게임)마다 두 조건 점으로. 무엇과 무엇을 짝지어 비교하는지 보여 준다
-    2-effects.png         짝 차이(meno − SFML)의 평균과 95% 신뢰구간. 1차 지표만 색, 2차 지표는 회색
-    3-errors.png          실패한 빌드의 첫 오류 유형을 조건별로 (탐색 지표)
+    1-primary-pairs.png   1차 지표를 셀(모델 × 게임)마다 두 조건의 점으로 찍는다. 무엇과 무엇을 짝지어 비교하는지 보여 준다
+    2-effects.png         짝 차이(meno − SFML)의 평균과 95% 신뢰구간. 1차 지표만 색을 칠하고 2차 지표는 회색으로 둔다
+    3-errors.png          실패한 빌드의 첫 오류 유형을 조건별로 쌓은 막대 (탐색 지표)
 숫자 표는 analyze.py의 report.md와 cells.csv에 있다. 그림 글자는 영어다 (한글 글꼴 없이 어디서나 같게 그리려고).
 
 색은 dataviz 기본 팔레트(밝은 모드)이고 benchmark/style.py와 같은 값이다. 조건 두 색(파랑 meno, 주황 SFML)은
-겹쳐 그려도 색각 이상에서 구분된다고 검증된 앞 두 칸이다. 오류 유형은 이웃한 칸만 구분되면 되는 누적 막대라 다섯 칸을 쓴다.
+겹쳐 그려도 색각 이상이 있는 사람이 구분할 수 있다고 검증된 앞 두 칸이다. 오류 유형은 이웃한 칸만 구분되면 되는 누적 막대라 다섯 칸을 쓴다.
 """
 from __future__ import annotations
 
@@ -169,7 +169,7 @@ def error_types(plt, rows: list[dict], out: Path) -> None:
             n = counts[condition][kind]
             if not n:
                 continue
-            # 칸 사이 2px 표면색 틈. 막대 두께는 칸의 일부만 (≤ 24px 상당)
+            # 조각 사이에 2px 표면색 틈을 둔다. 막대 두께는 줄 높이의 일부만 쓴다 (≤ 24px 상당)
             ax.barh(y, n, left=left, height=0.42, color=color, edgecolor=SURFACE, linewidth=2)
             ax.text(left + n / 2, y, str(n), ha="center", va="center", fontsize=8.5,
                     color=INK if color in LIGHT else SURFACE)

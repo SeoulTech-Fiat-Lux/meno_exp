@@ -1,5 +1,5 @@
 # 성능 측정 설정 (SeoulTech-Fiat-Lux/Meno#30). 측정 프로그램은 이 저장소의 bench_app/이다. 동결한 meno(46f8934)를
-# FetchContent로 받아 공개 API로만 재므로 Meno 저장소는 고치지 않는다. 형식 약속은 README의 "실행 파일 약속"을 따른다.
+# FetchContent로 받아 공개 API로만 재므로 Meno 저장소는 고치지 않는다. 형식 약속은 README의 "측정 대상과 실행 파일 약속"을 따른다.
 
 [build]
 # bench_app을 빌드할 때 넘기는 CMake 옵션. meno·SFML·Tracy 버전은 bench_app/CMakeLists.txt에 커밋 해시로 고정돼 있다.
@@ -27,7 +27,7 @@ timeout_s = 300
 env = { vblank_mode = "0", __GL_SYNC_TO_VBLANK = "0" }
 
 [tracy]
-# 병목 분석. 측정 수치와 섞지 않도록 따로 빌드하고 따로 돌린다. 자세한 약속은 README의 "Tracy 병목 분석"을 참고한다.
+# 병목 분석. 측정 수치와 섞지 않도록 따로 빌드하고 따로 돌린다. 자세한 약속은 README의 "측정 대상과 실행 파일 약속"을 참고한다.
 # Tracy는 계측되는 쪽(bench_app/CMakeLists.txt의 FetchContent)과 캡처 도구의 버전이 같아야 연결된다.
 version = "v0.15.0"
 repo = "https://github.com/wolfpld/tracy.git"

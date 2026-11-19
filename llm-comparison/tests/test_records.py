@@ -27,7 +27,7 @@ try:
 except SystemExit:
     pass
 
-# 코드보다 새 형식의 기록이 섞이면 멈춘다
+# 코드가 아는 형식보다 새 형식의 기록이 섞이면 멈춘다
 (d / "runs-new.jsonl").write_text(json.dumps({"run_id": "c", "schema_version": runlog.SCHEMA_VERSION + 1}) + "\n",
                                   encoding="utf-8")
 try:

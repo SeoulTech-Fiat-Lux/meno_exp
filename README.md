@@ -45,7 +45,7 @@ benchmark/                  #30 성능 측정
 ### 0. 공통 준비 (모두)
 
 WSL에서는 반드시 리눅스 쪽 홈에 clone한다. `/mnt/c/...`에서는 빌드가 느리고 심볼릭 링크와 실행 권한이 깨진다.
-하니스는 LLM이 만든 코드를 실행하므로, 개인 파일이 없는 전용 배포판이나 계정을 권한다.
+하니스는 LLM이 만든 코드를 실행하므로, 개인 파일이 없는 전용 배포판이나 계정에서 돌리기를 권한다.
 
 ```bash
 sudo apt-get update && sudo apt-get install -y build-essential cmake git python3 python3-venv xvfb ffmpeg x11-utils \
@@ -61,7 +61,7 @@ git clone https://github.com/SeoulTech-Fiat-Lux/meno_exp.git ~/meno_exp
 cd ~/meno_exp/llm-comparison && python3 tests/run_all.py
 ```
 
-테스트가 모두 통과해야 한다. 파이썬 패키지는 설치하지 않는다(Python 3.11 이상, 표준 라이브러리만).
+테스트가 모두 통과해야 한다. 따로 설치할 파이썬 패키지는 없다(Python 3.11 이상, 표준 라이브러리만 쓴다).
 
 ### 1. 본 실행 (Claude 1명, Codex 2명)
 
@@ -74,7 +74,7 @@ cd ~/meno_exp/llm-comparison && python3 tests/run_all.py
   `~/.codex/AGENTS.md`, `~/.codex/AGENTS.override.md`가 있으면 이름을 바꿔 둔다. `codex`의 `/model` 목록에
   `gpt-6.1-sol`이 없으면 팀에 알린다.
 
-**1-2. 동결된 최신 상태인지 확인한다.** `동결 상태와 같음`이 나와야 한다. 다르면 돌리지 말고 팀에 알린다.
+**1-2. 최신 동결 상태와 같은지 확인한다.** `동결 상태와 같음`이 나와야 한다. 다르면 돌리지 말고 팀에 알린다.
 옛 커밋으로 돌린 결과는 2단계에서 합쳐지지 않는다.
 
 ```bash
@@ -93,7 +93,7 @@ python3 harness/run.py --models other-vendor --probe     # ChatGPT 구독자
 
 Codex에서 실패하면 출력 전체를 팀에 공유한다. 고칠 곳은 `harness/llm.py`의 `CodexCLI`이다.
 
-**1-4. 자기 몫을 돌린다.** 끝난 회차는 건너뛰므로, 창을 닫았거나 구독 한도로 멈췄으면 같은 명령을 다시 실행한다.
+**1-4. 자기 몫을 돌린다.** 창을 닫았거나 구독 한도에 걸려 멈췄으면 같은 명령을 다시 실행하면 된다. 이미 끝난 회차는 건너뛴다.
 
 ```bash
 python3 harness/run.py --games main --models top,light                  # Claude Max 구독자: 72회차
@@ -108,7 +108,7 @@ python3 harness/run.py --games main --models other-vendor --shard 2/2   # ChatGP
 ```
 
 - 본 실행 중에는 같은 PC에서 다른 무거운 작업을 하지 않는다. 프레임 시간이 흔들린다.
-- `runs/`는 push하지 않는다. 먼저 올리면 채점자가 조건을 알 수 있다.
+- `runs/`는 push하지 않는다. 채점 전에 올라가면 채점자가 조건을 알 수 있다.
 
 **1-5. 결과를 압축해 묶음 담당에게 보낸다** (git 밖, 예: 메신저나 드라이브). 묶음 담당 본인은 보내지 않는다.
 
@@ -128,8 +128,8 @@ mkdir -p ~/incoming/chatgpt1 && tar xzf ~/runs-chatgpt1.tgz -C ~/incoming/chatgp
 mkdir -p ~/incoming/chatgpt2 && tar xzf ~/runs-chatgpt2.tgz -C ~/incoming/chatgpt2 --strip-components=1
 ```
 
-**2-2. 합치고 검사한다.** 묶음 담당이 Claude 실행자이면 자기 결과는 이미 `runs/main`에 있으므로 첫 원본으로 `runs/main`을 그대로 준다.
-아니면 Claude 결과도 2-1처럼 `~/incoming/claude`에 풀고 그 경로를 준다. 입력 해시가 다르거나 빠진 회차가 있으면 합치지 않고 멈춘다.
+**2-2. 합치고 검사한다.** 묶음 담당이 Claude 실행자이면 자기 결과가 이미 `runs/main`에 있으므로 첫 번째 원본 경로로 `runs/main`을 그대로 넘긴다.
+아니면 Claude 결과도 2-1처럼 `~/incoming/claude`에 풀고 그 경로를 넘긴다. 입력 해시가 다르거나 빠진 회차가 있으면 합치지 않고 멈춘다.
 
 ```bash
 python3 grading/merge_runs.py runs/main runs/main ~/incoming/chatgpt1 ~/incoming/chatgpt2
@@ -142,7 +142,7 @@ python3 grading/merge_runs.py runs/main runs/main ~/incoming/chatgpt1 ~/incoming
 python3 grading/blind.py runs/main ~/blind ~/sealed/meno-exp-mapping.csv --graders 이름1,이름2,이름3
 ```
 
-**2-4. 묶음을 압축해 채점자 모두에게 보낸다.** 배정은 `~/blind/assignments.csv`에 있다(ID별 채점자).
+**2-4. 묶음을 압축해 채점자 모두에게 보낸다.** ID별 채점자 배정은 `~/blind/assignments.csv`에 있다.
 zip이 아니라 tar를 쓴다. zip은 에셋 심볼릭 링크를 깨뜨린다.
 
 ```bash
@@ -169,10 +169,10 @@ cd ~/blind/<ID> && ./game
 ```
 
 - 채점표 `~/blind/<ID>/sheet-<자기 이름>.csv`를 연다. Windows에서는 `explorer.exe ~/blind`로 폴더를 열어 Excel로 열면 된다.
-- `result` 칸에 통과는 `O`, 실패는 `X`를 적는다. `requirement`의 한 문장만 확인한다.
-- 수치는 재지 않는다. 눈에 띄게 다르면 실패이고, 애매하면 `note`에 적어 두면 합의 회의에서 정한다.
+- `result` 칸에 통과는 `O`, 실패는 `X`를 적는다. `requirement` 칸에 적힌 한 문장만 확인한다.
+- 수치는 재지 않는다. 눈에 띄게 다르면 실패이고, 애매하면 `note`에 적어 두고 합의 회의에서 정한다.
 - 효과음은 채점 전에 `~/blind/_assets/sfx/`의 파일을 한 번씩 들어 둔다.
-- **Excel에서 저장할 때는 형식을 "CSV UTF-8 (쉼표로 분리)"로 둔다.** 그냥 "CSV"로 저장하면 한국어가 깨진다.
+- **Excel에서 저장할 때는 형식을 "CSV UTF-8 (쉼표로 분리)"로 둔다.** 그냥 "CSV"로 저장하면 한글이 깨진다.
 - `~/blind` 안의 파일은 Windows 탐색기로 지우지 않는다(심볼릭 링크 때문에 오류가 난다).
 
 **3-3. 채운 채점표만 묶어 묶음 담당에게 돌려준다.**
@@ -183,7 +183,7 @@ cd ~ && tar czf ~/sheets-<자기 이름>.tgz blind/*/sheet-<자기 이름>.csv
 
 ### 4. 집계 (묶음 담당)
 
-**4-1. 돌려받은 채점표를 제자리에 푼다.** 채점자마다 한 번씩 실행한다. 빈 채점표가 채워진 것으로 바뀐다.
+**4-1. 돌려받은 채점표를 제자리에 푼다.** 채점자마다 한 번씩 실행한다. 빈 채점표가 채워진 채점표로 덮어써진다.
 
 ```bash
 tar xzf ~/sheets-<채점자 이름>.tgz -C ~
@@ -197,7 +197,7 @@ python3 grading/collect.py agree ~/blind grading/results
 
 **4-3. 합의 회의를 한다.** `grading/results/disagreements.csv`의 어긋난 항목을 함께 다시 보고 `final` 칸에 `O`/`X`를 채운다.
 
-**4-4. 처음으로 대응표를 열어 회차별 통과율을 낸다.**
+**4-4. 이제 처음으로 대응표를 열어 회차별 통과율을 낸다.**
 
 ```bash
 python3 grading/collect.py final ~/blind grading/results ~/sealed/meno-exp-mapping.csv
@@ -216,13 +216,13 @@ python3 -m venv .venv && .venv/bin/pip install -r analysis/requirements.txt
 ```
 
 **5-2. 사전 등록한 분석을 돌린다.** 결과는 `analysis/results/report.md`다. 맨 위 "요약"에 1차 지표와 민감도 판정이 있다.
-읽기용 docx는 이 파일을 Claude에 넣어 만들되, 숫자와 판정 문구는 고치지 않고 옮기게 한 뒤 원본과 대조한다.
+읽기용 docx는 이 파일을 Claude에 넣어 만든다. 숫자와 판정 문구는 고치지 말고 그대로 옮기게 하고, 다 만들면 원본과 대조한다.
 
 ```bash
 python3 analysis/analyze.py runs/main grading/results/run_scores.csv analysis/results
 ```
 
-**5-3. 대표작을 녹화한다.** 폴더를 만든 뒤 `cd ~/showcase/<게임>-<조건> && ./game`으로 띄워 직접 플레이하며
+**5-3. 대표작을 녹화한다.** 아래 명령으로 폴더를 만든 뒤, `cd ~/showcase/<게임>-<조건> && ./game`으로 띄워 직접 플레이하며
 Windows 게임 바(Win+Alt+R)로 녹화한다.
 
 ```bash
@@ -241,7 +241,7 @@ git add runs/main grading/mapping.csv grading/results analysis/results && git co
 
 ## 참고: 시범 실행과 점검 명령
 
-`llm-comparison/`에서 실행한다. 시범은 이미 끝났다([docs/pilot-2026-11-14.md](docs/pilot-2026-11-14.md)). 다시 돌리면 구독 한도를 쓴다.
+`llm-comparison/`에서 실행한다. 시범은 이미 끝났다([docs/pilot-2026-11-14.md](docs/pilot-2026-11-14.md)). 다시 돌리면 구독 한도가 소모된다.
 
 ```bash
 python3 harness/run.py --games pilot --mock --mock-fail-first --reps 1   # LLM 없이 흐름 점검
@@ -252,7 +252,7 @@ python3 harness/run.py --games main --dry-run           # 실행할 회차 목�
 ```
 
 ```bash
-python3 harness/run.py --games pilot --measure-context  # 조건별 문맥 토큰 재기 (3호출, runs/context_tokens.jsonl)
+python3 harness/run.py --games pilot --measure-context  # 조건별 문맥 토큰 재기 (3번 호출, runs/context_tokens.jsonl)
 ```
 
 ```bash
@@ -269,7 +269,7 @@ python3 analysis/analyze.py runs/pilot-<입력 해시> - analysis/pilot   # 채�
 
 ## 참고: 동결
 
-`freeze-2`로 동결했다. 이후 명세·에셋·템플릿·문맥·지시문·채점표·하니스를 바꾸면 모든 회차를 다시 돌린다.
+`freeze-2`로 동결했다. 이후 명세·에셋·템플릿·문맥·지시문·채점표·하니스를 바꾸면 모든 회차를 다시 돌려야 한다.
 
 다시 동결해야 할 때:
 1. 문맥 묶음을 고정 커밋에서 다시 만든다.

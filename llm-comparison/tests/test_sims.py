@@ -24,7 +24,7 @@ over = [h[2] for h in hits]
 assert 5.5 <= min(first) and max(first) <= 8.7, (min(first), max(first))
 assert 7.5 <= min(over) and max(over) <= 10.7 and max(over) <= 20, (min(over), max(over))
 
-# 서바이버류: 30초 안에 접촉하거나 레벨업 카드에서 멈춤 (명세 기준), 첫 접촉 중앙값 약 20초, 레벨업 드묾
+# 서바이버류: 30초 안에 접촉하거나 레벨업 카드에서 멈춤 (명세 기준), 첫 접촉 중앙값 약 20초, 레벨업은 드묾
 survivor = load("survivor_noinput")
 rng = random.Random(2)
 results = [survivor.run(rng) for _ in range(150)]

@@ -14,7 +14,7 @@ import errors
 import figures
 import records
 
-# 빌드 오류 분류: SFML 2 습관(기본 생성자 등)이 일반 C++ 오류로 새지 않아야 한다
+# 빌드 오류 분류: SFML 2 습관(기본 생성자 등)이 일반 C++ 오류로 분류되지 않아야 한다
 cases = [
     ("main.cpp:3: error: no matching function for call to 'sf::Text::Text()'", "sfml", "sfml2_api"),
     ("main.cpp:3: error: no matching function for call to 'sf::Sprite::Sprite()'", "sfml", "sfml2_api"),
@@ -42,7 +42,7 @@ except ImportError:
     print("ALL OK")
     sys.exit(0)
 
-# 합성 본 실행으로 실제 그리기: 채점 뒤 3장, 채점 전 2장
+# 합성한 본 실행 데이터로 실제로 그린다: 채점 뒤 3장, 채점 전 2장
 cfg = tomllib.loads((LC / "experiment.toml").read_text(encoding="utf-8"))
 rng = random.Random(3)
 tmp = Path(tempfile.mkdtemp())

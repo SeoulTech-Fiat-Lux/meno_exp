@@ -146,7 +146,7 @@ def main() -> None:
     if args.reps:
         cfg["sweep"]["reps"] = args.reps
 
-    # 렌더러는 결과 폴더 이름(GPU)에 쓰이며, 빌드에 몇 분을 들이기 전에 미리 확인한다.
+    # 렌더러는 결과 폴더 이름(GPU)에도 쓰인다. 빌드에 몇 분을 들이기 전에 미리 확인한다.
     sweep, run_cfg = cfg["sweep"], cfg["run"]
     proc_env = run_env(cfg)
     gl = probe_gl(proc_env, args.mock, args.allow_software)

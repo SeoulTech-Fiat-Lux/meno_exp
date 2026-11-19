@@ -11,7 +11,7 @@
 //       [--screenshot <png>]  (sfml 대상만: 마지막 프레임을 저장해 두 SFML 대상이 같은 그림인지 확인한다)
 // 출력: 머리글 frame,frame_ms와 F줄. 표준 오류에 frames·updates 요약 한 줄.
 //
-// 공정하게 만드는 규칙 (benchmark/README.md의 "실행 파일 약속"):
+// 공정하게 만드는 규칙 (benchmark/README.md의 "측정 대상과 실행 파일 약속"):
 // - 네 대상은 같은 텍스처, 창 크기, 시드로 정한 초기 상태를 쓰고, 프레임마다 같은 이동 함수 step()을 한 번 부른다.
 // - meno의 Application은 고정 시간 간격으로 update()를 부르므로, fixedTimeStep을 아주 작게 하고
 //   maxUpdatesPerFrame = 1로 두어 프레임마다 정확히 한 번 갱신되게 한다. 이동은 meno의 dt가 아니라 kDt를 쓴다.
@@ -256,7 +256,7 @@ int runSfmlTemp(std::vector<Body>& bodies, FrameRecorder& rec, const std::string
 
 // 배칭: 스프라이트마다 draw를 부르는 대신, 회전한 사각형 N개의 꼭짓점(삼각형 2개 = 6개)을 CPU에서 계산해
 // VertexArray 하나에 넣고 draw를 한 번 부른다. 텍스처가 하나라 상태 전환이 없다. sf::Sprite와 같은 그림이 나온다
-// (기준점은 텍스처 중심, 회전은 시계 방향 도 단위).
+// (기준점은 텍스처 중심, 회전은 시계 방향, 도 단위).
 int runSfmlBatched(std::vector<Body>& bodies, FrameRecorder& rec, const std::string& screenshot) {
     sf::RenderWindow window(sf::VideoMode({kWidth, kHeight}), "meno_bench sfml-batched");
     sf::Texture texture({kTexture, kTexture});

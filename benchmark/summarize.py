@@ -62,7 +62,7 @@ def main() -> None:
             row |= {f"{s}_ms": statistics.median(xs), f"{s}_min": min(xs), f"{s}_max": max(xs)}
         rows.append(row)
     if not rows:
-        sys.exit(f"성공한 측정이 없다. 실패 내용은 {out / 'runs.jsonl'}의 error, stderr_tail")
+        sys.exit(f"성공한 측정이 없다. 실패 내용은 {out / 'runs.jsonl'}의 error, stderr_tail에 있다")
 
     with (out / "summary.csv").open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
